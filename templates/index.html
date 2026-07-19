@@ -8,6 +8,8 @@
     .routine-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     .routine-name { cursor: pointer; color: var(--text-color); font-weight: 700; }
     .routine-name:hover { color: var(--primary-color); }
+    .routine-name .bi { transition: transform .2s; font-size: .8rem; }
+    .routine-name.collapsed .bi-chevron-down { transform: rotate(-90deg); }
     .exercise-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); }
     .exercise-item:last-child { border-bottom: none; }
     .exercise-item .name { font-weight: 500; color: var(--text-color); }
@@ -46,8 +48,8 @@
         <div class="col-md-6 col-lg-4">
             <div class="card h-100 routine-card">
                 <div class="card-header d-flex justify-content-between align-items-center py-3">
-                    <span class="routine-name" onclick="renameRoutine({{ rd.routine.id }}, '{{ rd.routine.name | e }}')" title="Clicca per rinominare">
-                        {{ rd.routine.name }}
+                    <span class="routine-name" data-bs-toggle="collapse" data-bs-target="#exercises-{{ rd.routine.id }}" role="button" aria-expanded="true">
+                        <i class="bi bi-chevron-down"></i> {{ rd.routine.name }}
                     </span>
                     <div class="d-flex gap-1">
                         <button class="btn btn-sm btn-outline-secondary" onclick="renameRoutine({{ rd.routine.id }}, '{{ rd.routine.name | e }}')" title="Rinomina">
@@ -58,7 +60,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body collapse show" id="exercises-{{ rd.routine.id }}">
                     {% if rd.exercises %}
                         {% for ex in rd.exercises %}
                         <div class="exercise-item">
