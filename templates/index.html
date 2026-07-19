@@ -4,87 +4,106 @@
 
 {% block extra_css %}
 <style>
-    .day-card {
-        transition: all 0.3s ease;
+    .routine-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .routine-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .routine-name { cursor: pointer; color: #1e293b; font-weight: 700; }
+    .routine-name:hover { color: #4f46e5; }
+    .exercise-item { padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9; }
+    .exercise-item:last-child { border-bottom: none; }
+    .exercise-item .name { font-weight: 500; color: #1e293b; }
+    .exercise-item .meta { font-size: 0.8rem; color: #64748b; }
+    .btn-avvia {
+        background: linear-gradient(135deg, #059669, #10b981);
+        color: #fff; border: none; font-weight: 600;
     }
-    .routine-name { cursor: pointer; }
-    .routine-name:hover { opacity: 0.8; }
+    .btn-avvia:hover { background: linear-gradient(135deg, #047857, #059669); color: #fff; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1><i class="bi bi-calendar-check"></i> I Tuoi Allenamenti</h1>
+        <h1 class="mb-1" style="color:#1e293b;"><i class="bi bi-calendar-check"></i> Le Tue Routine</h1>
+        <small class="text-muted">Gestisci i tuoi template di allenamento</small>
     </div>
-    <a href="{{ url_for('add_workout') }}" class="btn btn-primary btn-lg">
-        <i class="bi bi-plus-circle"></i> Nuovo Allenamento
-    </a>
+    <button class="btn btn-primary btn-lg" onclick="addRoutine()">
+        <i class="bi bi-plus-circle"></i> Nuova Routine
+    </button>
 </div>
 
-{% if routines|length == 0 %}
-<div class="alert alert-info">
-    <i class="bi bi-info-circle"></i> Nessuna routine creata. Aggiungine una per iniziare!
+{% if routine_data|length == 0 %}
+<div class="text-center py-5">
+    <i class="bi bi-inbox display-1 text-muted"></i>
+    <h4 class="mt-3 text-muted">Nessuna routine creata</h4>
+    <p class="text-muted">Crea la tua prima routine per iniziare ad allenarti!</p>
+    <button class="btn btn-primary btn-lg" onclick="addRoutine()">
+        <i class="bi bi-plus-circle"></i> Crea Routine
+    </button>
 </div>
-{% endif %}
-
-<div class="row g-4" id="routines-container">
-    {% for routine in routines %}
-        <div class="col-md-6 col-lg-4 routine-column" data-routine-id="{{ routine.id }}" data-position="{{ routine.position }}">
-            <div class="card h-100 day-card">
-                <div class="card-header bg-gradient text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <span class="routine-name" onclick="renameRoutine({{ routine.id }}, '{{ routine.name | e }}')" title="Clicca per rinominare">{{ routine.name }}</span>
-                    </h5>
-                    <button class="btn btn-sm btn-outline-light" onclick="deleteRoutine({{ routine.id }}, '{{ routine.name | e }}')" title="Elimina routine">
-                        <i class="bi bi-trash"></i>
-                    </button>
+{% else %}
+<div class="row g-4">
+    {% for rd in routine_data %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 routine-card">
+                <div class="card-header d-flex justify-content-between align-items-center py-3">
+                    <span class="routine-name" onclick="renameRoutine({{ rd.routine.id }}, '{{ rd.routine.name | e }}')" title="Clicca per rinominare">
+                        {{ rd.routine.name }}
+                    </span>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="renameRoutine({{ rd.routine.id }}, '{{ rd.routine.name | e }}')" title="Rinomina">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRoutine({{ rd.routine.id }}, '{{ rd.routine.name | e }}')" title="Elimina">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
-                    {% if day_groups[routine.name] %}
-                        <div class="list-group list-group-flush">
-                            {% for workout in day_groups[routine.name] %}
-                                <a href="{{ url_for('view_workout', workout_id=workout.id) }}" class="list-group-item list-group-item-action">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <h6 class="mb-1">{{ workout.exercise }}</h6>
-                                            <small class="text-muted">
-                                                {% if workout.sets %}Set: {{ workout.sets }}{% endif %}
-                                                {% if workout.reps %}| Reps: {{ workout.reps }}{% endif %}
-                                                {% if workout.weight %}| Peso: {{ workout.weight }}{% endif %}
-                                            </small>
-                                        </div>
-                                        <span class="badge bg-primary rounded-pill">#{{ workout.position }}</span>
-                                    </div>
-                                </a>
-                            {% endfor %}
+                    {% if rd.exercises %}
+                        {% for ex in rd.exercises %}
+                        <div class="exercise-item">
+                            <div class="name">{{ ex.exercise }}</div>
+                            <div class="meta">
+                                {% if ex.default_sets %}{{ ex.default_sets }}x{% endif %}{% if ex.default_reps %}{{ ex.default_reps }}{% endif %}
+                                {% if not ex.default_sets and not ex.default_reps %}Sets/reps non impostati{% endif %}
+                            </div>
                         </div>
+                        {% endfor %}
                     {% else %}
-                        <p class="text-muted text-center py-3">
+                        <p class="text-muted text-center py-3 mb-0">
                             <i class="bi bi-inbox"></i><br>
-                            Nessun allenamento assegnato
+                            Nessun esercizio. <a href="{{ url_for('manage_routine', routine_id=rd.routine.id) }}">Aggiungine!</a>
                         </p>
                     {% endif %}
                 </div>
-                <div class="card-footer text-center">
-                    <a href="{{ url_for('day_view', day_name=routine.name) }}" class="btn btn-sm btn-outline-primary">
-                        <i class="bi bi-arrow-right"></i> Visualizza
+                <div class="card-footer bg-white d-flex gap-2 py-3">
+                    <form method="POST" action="{{ url_for('start_routine', routine_id=rd.routine.id) }}" class="flex-grow-1">
+                        <button type="submit" class="btn btn-avvia w-100" {% if not rd.exercises %}disabled title="Aggiungi esercizi prima"{% endif %}>
+                            <i class="bi bi-play-fill"></i> Avvia Routine
+                        </button>
+                    </form>
+                    <a href="{{ url_for('manage_routine', routine_id=rd.routine.id) }}" class="btn btn-outline-primary" title="Gestisci esercizi">
+                        <i class="bi bi-gear"></i>
                     </a>
                 </div>
+                {% if rd.last_session or rd.session_count > 0 %}
+                <div class="px-3 pb-3">
+                    <small class="text-muted">
+                        {% if rd.session_count > 0 %}{{ rd.session_count }} sessioni{% endif %}
+                        {% if rd.last_session %} &middot; Ultima: {{ rd.last_session.date.strftime('%d/%m/%Y') }}{% endif %}
+                    </small>
+                </div>
+                {% endif %}
             </div>
         </div>
     {% endfor %}
 </div>
-
-<div class="text-center mt-4">
-    <button class="btn btn-success" onclick="addRoutine()">
-        <i class="bi bi-plus-lg"></i> Aggiungi Routine
-    </button>
-</div>
+{% endif %}
 
 <script>
 const ROUTINE_RENAME_URL = '{{ url_for("rename_routine", routine_id=0) }}';
 const ROUTINE_DELETE_URL = '{{ url_for("delete_routine", routine_id=0) }}';
+const ROUTINE_MANAGE_URL = '{{ url_for("manage_routine", routine_id=0) }}';
 
 function routineUrl(template, id) {
     return template.replace('/0', '/' + id);
@@ -99,7 +118,7 @@ function addRoutine() {
         body: JSON.stringify({name: name.trim()})
     }).then(r => r.json()).then(data => {
         if (data.id) {
-            location.reload();
+            location.href = routineUrl(ROUTINE_MANAGE_URL, data.id);
         } else {
             alert('Errore: ' + (data.error || 'sconosciuto'));
         }
@@ -114,25 +133,19 @@ function renameRoutine(id, oldName) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name: newName.trim()})
     }).then(r => r.json()).then(data => {
-        if (data.id) {
-            location.reload();
-        } else {
-            alert('Errore: ' + (data.error || 'sconosciuto'));
-        }
+        if (data.id) location.reload();
+        else alert('Errore: ' + (data.error || 'sconosciuto'));
     });
 }
 
 function deleteRoutine(id, name) {
-    if (!confirm("Eliminare la routine \"" + name + "\" e tutti i suoi allenamenti?")) return;
+    if (!confirm("Eliminare la routine \"" + name + "\" e tutte le sue sessioni?")) return;
     fetch(routineUrl(ROUTINE_DELETE_URL, id), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
     }).then(r => r.json()).then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Errore: ' + (data.error || 'sconosciuto'));
-        }
+        if (data.success) location.reload();
+        else alert('Errore: ' + (data.error || 'sconosciuto'));
     });
 }
 </script>

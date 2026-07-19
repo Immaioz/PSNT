@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Gestisci {{ routine.name }} - Workout Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+    .exercise-row { padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; }
+    .exercise-row:last-child { border-bottom: none; }
+    .exercise-row .name { font-weight: 600; color: #1e293b; }
+    .exercise-row .meta { font-size: 0.8rem; color: #64748b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('dashboard') }}" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Dashboard</a>
+        <h1 class="mt-1 mb-0" style="color:#1e293b;"><i class="bi bi-gear"></i> {{ routine.name }}</h1>
+        <small class="text-muted">Gestisci gli esercizi di questo template</small>
+    </div>
+    <form method="POST" action="{{ url_for('start_routine', routine_id=routine.id) }}">
+        <button type="submit" class="btn btn-success btn-lg" {% if not exercises %}disabled{% endif %}>
+            <i class="bi bi-play-fill"></i> Avvia
+        </button>
+    </form>
+</div>
+
+{% if exercises %}
+<div class="card mb-4">
+    <div class="card-body p-0">
+        {% for ex in exercises %}
+        <div class="exercise-row px-3 d-flex justify-content-between align-items-center">
+            <div class="flex-grow-1">
+                <div class="name">
+                    {{ ex.exercise }}
+                    {% if ex.exercise_id %} <span class="badge bg-success" style="font-size:.55rem;"><i class="bi bi-book"></i></span>{% endif %}
+                </div>
+                <div class="meta">
+                    {% if ex.default_sets %}Set: {{ ex.default_sets }}{% endif %}
+                    {% if ex.default_reps %} | Reps: {{ ex.default_reps }}{% endif %}
+                    {% if ex.notes %} | {{ ex.notes }}{% endif %}
+                    {% if not ex.default_sets and not ex.default_reps %}Nessun default impostato{% endif %}
+                </div>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary" onclick="editExercise({{ ex.id }}, '{{ ex.exercise | e }}', '{{ ex.exercise_id or '' }}', '{{ ex.default_sets or '' }}', '{{ ex.default_reps or '' }}', '{{ (ex.notes or '') | e }}')" title="Modifica">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <form method="POST" action="{{ url_for('delete_routine_exercise', exercise_id=ex.id) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio?')" title="Rimuovi">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="alert alert-secondary mb-4">
+    <i class="bi bi-info-circle"></i> Nessun esercizio in questa routine. Aggiungine uno qui sotto!
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header py-3">
+        <h5 class="mb-0" style="color:#1e293b;"><i class="bi bi-plus-circle"></i> Aggiungi Esercizio</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('add_routine_exercise', routine_id=routine.id) }}" novalidate>
+            <div class="mb-3">
+                <label for="exercise" class="form-label fw-semibold">Esercizio *</label>
+                <input type="text" class="form-control" id="exercise" name="exercise" placeholder="Cerca o scrivi un esercizio..." autocomplete="off" required>
+                <input type="hidden" id="exercise_id" name="exercise_id" value="">
+            </div>
+
+            {% include 'exercise_autocomplete.html' %}
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="sets" class="form-label fw-semibold">Set (default)</label>
+                    <input type="number" class="form-control" id="sets" name="sets" placeholder="es. 3">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="reps" class="form-label fw-semibold">Reps (default)</label>
+                    <input type="text" class="form-control" id="reps" name="reps" placeholder="es. 8-10">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="notes" class="form-label fw-semibold">Note</label>
+                    <input type="text" class="form-control" id="notes" name="notes" placeholder="Note opzionali">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Aggiungi
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Exercise Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" style="color:#1e293b;">Modifica Esercizio</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Esercizio *</label>
+                        <input type="text" class="form-control" id="edit_exercise" name="exercise" required>
+                        <input type="hidden" id="edit_exercise_id" name="exercise_id" value="">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-semibold">Set</label>
+                            <input type="number" class="form-control" id="edit_sets" name="sets">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-semibold">Reps</label>
+                            <input type="text" class="form-control" id="edit_reps" name="reps">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-semibold">Note</label>
+                            <input type="text" class="form-control" id="edit_notes" name="notes">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary">Salva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editExercise(id, exercise, exerciseId, sets, reps, notes) {
+    document.getElementById('editForm').action = '{{ url_for("edit_routine_exercise", exercise_id=0) }}'.replace('/0', '/' + id);
+    document.getElementById('edit_exercise').value = exercise;
+    document.getElementById('edit_exercise_id').value = exerciseId;
+    document.getElementById('edit_sets').value = sets;
+    document.getElementById('edit_reps').value = reps;
+    document.getElementById('edit_notes').value = notes;
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

@@ -8,71 +8,83 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         :root {
-            --primary-color: #6f42c1;
-            --secondary-color: #e83e8c;
+            --primary-color: #4f46e5;
+            --accent-color: #7c3aed;
         }
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f1f5f9;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            color: #1e293b;
         }
         .navbar {
-            background: rgba(255, 255, 255, 0.95);
-            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
         }
         .navbar-brand {
             font-weight: 700;
             color: var(--primary-color) !important;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
         }
         main {
             flex: 1;
-            padding: 2rem 0;
+            padding: 1.5rem 0;
         }
         .container-main {
-            background: white;
-            border-radius: 15px;
-            padding: 2rem;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
         }
         .card {
-            border: none;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         }
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        .card-header {
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            font-weight: 600;
         }
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--primary-color);
             border: none;
         }
         .btn-primary:hover {
-            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            background: #4338ca;
         }
-        .badge-day {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-weight: 600;
+        .btn-success {
+            background: #059669;
+            border: none;
+        }
+        .btn-success:hover {
+            background: #047857;
         }
         .footer {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 2rem 0;
+            background: #ffffff;
+            padding: 1.5rem 0;
             margin-top: auto;
-            border-top: 1px solid #e9ecef;
+            border-top: 1px solid #e2e8f0;
             text-align: center;
-            color: #6c757d;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+        .badge-purple {
+            background: var(--accent-color);
+            color: #fff;
+        }
+        .badge-blue {
+            background: var(--primary-color);
+            color: #fff;
+        }
+        .text-dark-readable {
+            color: #1e293b;
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% if current_user.is_authenticated %}{{ url_for('dashboard') }}{% else %}{{ url_for('landing') }}{% endif %}">
@@ -85,22 +97,17 @@
                 <ul class="navbar-nav ms-auto">
                     {% if current_user.is_authenticated %}
                         <li class="nav-item">
-                            <span class="nav-link">
+                            <span class="nav-link text-dark-readable">
                                 <i class="bi bi-person-circle"></i> {{ current_user.username }}
                             </span>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('dashboard') }}">
+                            <a class="nav-link text-dark-readable" href="{{ url_for('dashboard') }}">
                                 <i class="bi bi-house"></i> Home
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('add_workout') }}">
-                                <i class="bi bi-plus-circle"></i> Nuovo
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('stats') }}">
+                            <a class="nav-link text-dark-readable" href="{{ url_for('stats') }}">
                                 <i class="bi bi-graph-up"></i> Stats
                             </a>
                         </li>
@@ -111,12 +118,12 @@
                         </li>
                     {% else %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">
+                            <a class="nav-link text-dark-readable" href="{{ url_for('login') }}">
                                 <i class="bi bi-box-arrow-in-right"></i> Login
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('register') }}">
+                            <a class="nav-link text-dark-readable" href="{{ url_for('register') }}">
                                 <i class="bi bi-person-plus"></i> Registrati
                             </a>
                         </li>
@@ -126,10 +133,8 @@
         </div>
     </nav>
 
-    <!-- Main Content -->
     <main>
         <div class="container">
-            <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -147,10 +152,9 @@
         </div>
     </main>
 
-    <!-- Footer -->
     <footer class="footer">
         <div class="container">
-            <p>&copy; 2026 Workout Tracker | Gestisci i tuoi allenamenti</p>
+            <p>&copy; 2026 Workout Tracker</p>
         </div>
     </footer>
 

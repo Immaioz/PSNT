@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Sessione {{ session.routine.name }} - {{ session.date.strftime('%d/%m/%Y') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .weight-ctrl { display: flex; align-items: center; gap: 4px; }
+    .weight-ctrl .btn { width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .weight-ctrl input { width: 75px; text-align: center; font-weight: 700; font-size: .95rem; }
+    .sets-reps-ctrl input { width: 55px; text-align: center; font-size: .85rem; }
+    .workout-row { padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; }
+    .workout-row:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('dashboard') }}" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Dashboard</a>
+        <h1 class="mt-1 mb-0" style="color:#1e293b;">
+            <i class="bi bi-calendar-check"></i> {{ session.routine.name }}
+        </h1>
+        <small class="text-muted">{{ session.date.strftime('%d/%m/%Y') }}</small>
+    </div>
+    <div class="d-flex gap-2">
+        <form method="POST" action="{{ url_for('delete_session', session_id=session.id) }}">
+            <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Eliminare questa sessione?')">
+                <i class="bi bi-trash"></i> Elimina Sessione
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if workout_data %}
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        {% for wd in workout_data %}
+        {% set w = wd.workout %}
+        <div class="workout-row px-3">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <div class="flex-grow-1">
+                    <a href="{{ url_for('view_workout', workout_id=w.id) }}" class="text-decoration-none" style="color:#1e293b;">
+                        <h6 class="mb-1 fw-semibold">{{ wd.name_it }}{% if w.exercise_id %} <span class="badge bg-success" style="font-size:.5rem;"><i class="bi bi-book"></i></span>{% endif %}</h6>
+                    </a>
+                    <div class="d-flex align-items-center gap-2">
+                        <form method="POST" action="{{ url_for('update_session_workout', session_id=session.id, workout_id=w.id) }}" class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="sets-reps-ctrl d-flex gap-1">
+                                <input type="number" name="sets" value="{{ w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
+                                <span class="text-muted">x</span>
+                                <input type="text" name="reps" value="{{ w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
+                            </div>
+                            <div class="weight-ctrl">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
+                                <input type="text" name="weight" value="{{ w.weight or '' }}" placeholder="kg">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm" title="Salva">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('delete_session_workout', session_id=session.id, workout_id=w.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio dalla sessione?')" title="Rimuovi">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-info-circle"></i> Nessun esercizio in questa sessione.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function adjustWeight(btn, delta) {
+    const form = btn.closest('form');
+    const input = form.querySelector('input[name="weight"]');
+    let val = parseFloat(input.value) || 0;
+    val = Math.round((val + delta) * 10) / 10;
+    if (val <= 0) val = '';
+    input.value = val;
+    form.submit();
+}
+</script>
+{% endblock %}
