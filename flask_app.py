@@ -1121,9 +1121,9 @@ def stats():
 def clear_stats():
     try:
         uid = current_user.id
+        db.session.execute(text("DELETE FROM weight_history WHERE user_id = :uid"), {"uid": uid})
         db.session.execute(text("DELETE FROM workout WHERE user_id = :uid"), {"uid": uid})
         db.session.execute(text("DELETE FROM routine_session WHERE user_id = :uid"), {"uid": uid})
-        db.session.execute(text("DELETE FROM weight_history WHERE user_id = :uid"), {"uid": uid})
         db.session.commit()
         return jsonify({"success": True})
     except Exception as e:
@@ -1141,11 +1141,16 @@ def routine_exercise_history(routine_id):
         return jsonify({"error": "Non hai accesso"}), 403
 
     exercise_name = request.args.get("exercise", "").strip()
+    exercise_id = request.args.get("exercise_id", "").strip() or None
     sessions = RoutineSession.query.filter_by(routine_id=routine.id, user_id=current_user.id).order_by(RoutineSession.date.asc()).all()
 
     data = []
     for s in sessions:
-        wo = Workout.query.filter_by(session_id=s.id, exercise=exercise_name, user_id=current_user.id).first()
+        wo = None
+        if exercise_id:
+            wo = Workout.query.filter_by(session_id=s.id, exercise_id=exercise_id, user_id=current_user.id).first()
+        if not wo:
+            wo = Workout.query.filter_by(session_id=s.id, exercise=exercise_name, user_id=current_user.id).first()
         if wo and wo.weight:
             try:
                 w_val = float(wo.weight.replace(",", "."))

@@ -109,7 +109,7 @@
                                 </td>
                                 <td class="text-center">
                                     {% if ex.total_sessions > 0 %}
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openChart({{ r.id }}, '{{ ex.name_it | replace("'", "\\'") }}')">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="openChart({{ r.id }}, '{{ ex.name_it | replace("'", "\\'") }}', '{{ ex.routine_exercise.exercise_id or '' }}')">
                                         <i class="bi bi-bar-chart-line"></i>
                                     </button>
                                     {% endif %}
@@ -183,15 +183,19 @@
 <script>
 let chart = null;
 
-function openChart(routineId, exerciseName) {
+function openChart(routineId, exerciseName, exerciseId) {
     document.getElementById('chartModalTitle').textContent = exerciseName;
 
-    fetch('/api/routine-exercise-history/' + routineId + '?exercise=' + encodeURIComponent(exerciseName))
+    let url = '/api/routine-exercise-history/' + routineId + '?exercise=' + encodeURIComponent(exerciseName);
+    if (exerciseId) url += '&exercise_id=' + encodeURIComponent(exerciseId);
+
+    new bootstrap.Modal(document.getElementById('chartModal')).show();
+    fetch(url)
         .then(r => r.json())
         .then(data => {
             renderChart(data);
-        });
-    new bootstrap.Modal(document.getElementById('chartModal')).show();
+        })
+        .catch(e => console.error('Chart error:', e));
 }
 
 function getChartColors() {
