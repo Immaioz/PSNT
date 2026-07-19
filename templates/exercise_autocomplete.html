@@ -1,0 +1,214 @@
+<style>
+.exercise-ac-wrapper { position: relative; }
+.exercise-ac-wrapper .form-control { padding-right: 2.5rem; }
+.exercise-ac-wrapper .form-control.is-loading::after {
+    content: "";
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px;
+    border: 2px solid #ccc; border-top-color: #667eea;
+    border-radius: 50%; animation: ac-spin .6s linear infinite;
+}
+@keyframes ac-spin { to { transform: translateY(-50%) rotate(360deg); } }
+.exercise-ac-dropdown {
+    position: absolute; z-index: 1050; left: 0; right: 0;
+    max-height: 320px; overflow-y: auto;
+    background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15);
+    display: none; margin-top: 4px;
+}
+.exercise-ac-dropdown.show { display: block; }
+.exercise-ac-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0;
+    transition: background .15s;
+}
+.exercise-ac-item:last-child { border-bottom: none; }
+.exercise-ac-item:hover, .exercise-ac-item.active { background: #f0edff; }
+.exercise-ac-item img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+.exercise-ac-item-info { flex: 1; min-width: 0; }
+.exercise-ac-item-name { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exercise-ac-item-meta { font-size: .75rem; color: #6c757d; }
+.exercise-ac-item-meta .badge { font-size: .65rem; padding: 2px 6px; }
+.exercise-ac-selected {
+    display: none; align-items: center; gap: 10px;
+    padding: 8px 12px; margin-top: 6px;
+    background: #f0edff; border: 1px solid #667eea; border-radius: 8px;
+}
+.exercise-ac-selected.show { display: flex; }
+.exercise-ac-selected img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.exercise-ac-selected .flex-grow-1 { min-width: 0; }
+.exercise-ac-selected .ac-sel-name { font-weight: 600; font-size: .9rem; }
+.exercise-ac-selected .ac-sel-meta { font-size: .75rem; color: #6c757d; }
+.exercise-ac-selected .btn-close { font-size: .7rem; }
+</style>
+
+<div class="exercise-ac-wrapper">
+    <div class="exercise-ac-dropdown" id="exerciseDropdown"></div>
+</div>
+<div class="exercise-ac-selected" id="exerciseSelectedPreview">
+    <img id="acPreviewImg" src="" alt="">
+    <div class="flex-grow-1">
+        <div class="ac-sel-name" id="acPreviewName"></div>
+        <div class="ac-sel-meta" id="acPreviewMeta"></div>
+    </div>
+    <button type="button" class="btn-close" id="acClearSelection" aria-label="Rimuovi"></button>
+</div>
+
+<script>
+(function() {
+    const input = document.getElementById('exercise');
+    const hiddenId = document.getElementById('exercise_id');
+    const dropdown = document.getElementById('exerciseDropdown');
+    const preview = document.getElementById('exerciseSelectedPreview');
+    const previewImg = document.getElementById('acPreviewImg');
+    const previewName = document.getElementById('acPreviewName');
+    const previewMeta = document.getElementById('acPreviewMeta');
+    const clearBtn = document.getElementById('acClearSelection');
+
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentResults = [];
+
+    {% if exercise_id is defined and exercise_id %}
+    (function() {
+        fetch('/api/exercises/{{ exercise_id }}')
+            .then(r => r.json())
+            .then(ex => {
+                if (ex && !ex.error) showPreview(ex);
+            });
+    })();
+    {% endif %}
+
+    function showPreview(ex) {
+        previewImg.src = ex.image || '';
+        previewImg.style.display = ex.image ? '' : 'none';
+        const nameIt = ex.name_it || ex.name;
+        const nameEn = ex.name;
+        previewName.textContent = nameIt !== nameEn ? nameIt + ' (' + nameEn + ')' : nameIt;
+        let meta = ex.body_part_it || ex.body_part || '';
+        if (ex.target_it || ex.target) meta += (meta ? ' · ' : '') + (ex.target_it || ex.target);
+        if (ex.equipment_it || ex.equipment) meta += (meta ? ' · ' : '') + (ex.equipment_it || ex.equipment);
+        previewMeta.textContent = meta;
+        preview.classList.add('show');
+    }
+
+    function clearSelection() {
+        hiddenId.value = '';
+        preview.classList.remove('show');
+        input.focus();
+    }
+
+    clearBtn.addEventListener('click', clearSelection);
+
+    input.addEventListener('input', function() {
+        if (hiddenId.value && input.value !== previewName.textContent) {
+            hiddenId.value = '';
+            preview.classList.remove('show');
+        }
+        clearTimeout(debounceTimer);
+        const q = input.value.trim();
+        if (q.length < 1) { closeDropdown(); return; }
+        debounceTimer = setTimeout(() => fetchResults(q), 250);
+    });
+
+    input.addEventListener('keydown', function(e) {
+        if (!dropdown.classList.contains('show')) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, currentResults.length - 1);
+            updateActive();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            updateActive();
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            selectItem(currentResults[activeIndex]);
+        } else if (e.key === 'Escape') {
+            closeDropdown();
+        }
+    });
+
+    input.addEventListener('focus', function() {
+        if (currentResults.length > 0 && input.value.trim().length >= 1) {
+            dropdown.classList.add('show');
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.exercise-ac-wrapper') && !e.target.closest('.exercise-ac-dropdown')) {
+            closeDropdown();
+        }
+    });
+
+    function fetchResults(q) {
+        fetch('/api/exercises?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(results => {
+                currentResults = results;
+                activeIndex = -1;
+                renderDropdown(results);
+            });
+    }
+
+    function renderDropdown(results) {
+        if (results.length === 0) {
+            dropdown.innerHTML = '<div class="exercise-ac-item"><span class="text-muted">Nessun risultato — puoi digitare un nome libero</span></div>';
+            dropdown.classList.add('show');
+            return;
+        }
+        dropdown.innerHTML = results.map((ex, i) => {
+            const bodyPartColors = {
+                'back': 'success', 'chest': 'primary', 'shoulders': 'info',
+                'upper arms': 'warning', 'lower arms': 'danger', 'upper legs': 'success',
+                'lower legs': 'primary', 'waist': 'info', 'neck': 'secondary',
+                'cardio': 'danger'
+            };
+            const bpColor = bodyPartColors[ex.body_part] || 'secondary';
+            const nameIt = ex.name_it || ex.name;
+            const nameEn = ex.name;
+            const displayName = nameIt !== nameEn ? nameIt + ' <span class="text-muted" style="font-weight:400;font-size:.75rem;">(' + nameEn + ')</span>' : nameIt;
+            const bodyPartLabel = ex.body_part_it || ex.body_part;
+            const targetLabel = ex.target_it || ex.target;
+            return `<div class="exercise-ac-item" data-index="${i}">
+                ${ex.image ? '<img src="' + ex.image + '" alt="">' : ''}
+                <div class="exercise-ac-item-info">
+                    <div class="exercise-ac-item-name">${displayName}</div>
+                    <div class="exercise-ac-item-meta">
+                        <span class="badge bg-${bpColor}">${bodyPartLabel}</span>
+                        ${targetLabel ? '<span class="badge bg-light text-dark">' + targetLabel + '</span>' : ''}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        dropdown.querySelectorAll('.exercise-ac-item').forEach(el => {
+            el.addEventListener('click', function() {
+                const idx = parseInt(this.dataset.index);
+                selectItem(results[idx]);
+            });
+        });
+
+        dropdown.classList.add('show');
+    }
+
+    function selectItem(ex) {
+        const nameIt = ex.name_it || ex.name;
+        input.value = nameIt;
+        hiddenId.value = ex.id;
+        showPreview(ex);
+        closeDropdown();
+    }
+
+    function updateActive() {
+        dropdown.querySelectorAll('.exercise-ac-item').forEach((el, i) => {
+            el.classList.toggle('active', i === activeIndex);
+        });
+    }
+
+    function closeDropdown() {
+        dropdown.classList.remove('show');
+        dropdown.innerHTML = '';
+    }
+})();
+</script>

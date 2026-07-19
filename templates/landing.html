@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Workout Tracker - Gestisci i tuoi allenamenti{% endblock %}
+
+{% block extra_css %}
+<style>
+    .landing-hero {
+        padding: 1rem 0 2rem;
+    }
+    .landing-hero h1 {
+        font-weight: 800;
+        color: #333;
+        line-height: 1.2;
+    }
+    .landing-hero .lead {
+        color: #6c757d;
+        font-size: 1.15rem;
+    }
+    .feature-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+    .feature-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        flex-shrink: 0;
+    }
+    .register-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
+    }
+    .register-card .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px 15px 0 0 !important;
+        padding: 1.5rem;
+        border: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="landing-hero">
+    <div class="row align-items-center g-5">
+        <div class="col-lg-6">
+            <h1 class="display-5 mb-4">
+                <i class="bi bi-dumbbell text-primary"></i>
+                Organizza i tuoi allenamenti
+            </h1>
+            <p class="lead mb-4">
+                Pianifica esercizi per giorno, traccia pesi e serie, e tieni tutto sotto controllo in un unico posto.
+            </p>
+
+            <div class="feature-item">
+                <div class="feature-icon"><i class="bi bi-calendar-week"></i></div>
+                <div>
+                    <h5 class="mb-1">Programma settimanale</h5>
+                    <p class="text-muted mb-0">Organizza gli esercizi su Day1–Day5 e riordina con drag &amp; drop.</p>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon"><i class="bi bi-graph-up"></i></div>
+                <div>
+                    <h5 class="mb-1">Traccia i progressi</h5>
+                    <p class="text-muted mb-0">Registra serie, ripetizioni e carichi per ogni esercizio.</p>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon"><i class="bi bi-shield-check"></i></div>
+                <div>
+                    <h5 class="mb-1">Account personale</h5>
+                    <p class="text-muted mb-0">I tuoi dati restano privati e accessibili solo a te.</p>
+                </div>
+            </div>
+
+            <p class="text-muted mt-4 mb-0">
+                Hai già un account?
+                <a href="{{ url_for('login') }}" class="fw-bold text-decoration-none">Accedi qui</a>
+            </p>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card register-card">
+                <div class="card-header">
+                    <h3 class="mb-0 text-center">
+                        <i class="bi bi-person-plus"></i> Crea il tuo account
+                    </h3>
+                    <p class="mb-0 text-center opacity-75 mt-2">Registrati gratis e inizia subito</p>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST" action="{{ url_for('register') }}" novalidate>
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-3">
+                            {{ form.username(class="form-control form-control-lg" + (" is-invalid" if form.username.errors else ""), placeholder="Username") }}
+                            {% if form.username.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.username.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-3">
+                            {{ form.email(class="form-control form-control-lg" + (" is-invalid" if form.email.errors else ""), placeholder="Email") }}
+                            {% if form.email.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.email.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-3">
+                            {{ form.password(class="form-control form-control-lg" + (" is-invalid" if form.password.errors else ""), placeholder="Password (min. 6 caratteri)") }}
+                            {% if form.password.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.password.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-4">
+                            {{ form.password_confirm(class="form-control form-control-lg" + (" is-invalid" if form.password_confirm.errors else ""), placeholder="Conferma password") }}
+                            {% if form.password_confirm.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.password_confirm.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="d-grid">
+                            {{ form.submit(class="btn btn-primary btn-lg") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

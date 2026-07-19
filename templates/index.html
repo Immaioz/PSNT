@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Workout Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+    .day-card {
+        cursor: grab;
+        transition: all 0.3s ease;
+    }
+    .day-card.dragging {
+        opacity: 0.5;
+        transform: scale(0.95);
+        cursor: grabbing;
+    }
+    .day-card.drag-over {
+        transform: scale(1.02);
+        box-shadow: 0 20px 40px rgba(102, 126, 234, 0.4) !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="bi bi-calendar-check"></i> I Tuoi Allenamenti</h1>
+        <small class="text-muted">💡 Trascina le carte per riordinare i giorni</small>
+    </div>
+    <a href="{{ url_for('add_workout') }}" class="btn btn-primary btn-lg">
+        <i class="bi bi-plus-circle"></i> Nuovo Allenamento
+    </a>
+</div>
+
+<div class="row g-4" id="days-container">
+    {% for day in days %}
+        <div class="col-md-6 col-lg-4 day-column" draggable="true" data-day="{{ day }}">
+            <div class="card h-100 day-card">
+                <div class="card-header bg-gradient text-white">
+                    <h5 class="mb-0">
+                        <span class="badge-day">{{ day }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if day_groups[day] %}
+                        <div class="list-group list-group-flush">
+                            {% for workout in day_groups[day] %}
+                                <a href="{{ url_for('view_workout', workout_id=workout.id) }}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">{{ workout.exercise }}</h6>
+                                            <small class="text-muted">
+                                                {% if workout.sets %}Sets: {{ workout.sets }}{% endif %}
+                                                {% if workout.reps %}| Reps: {{ workout.reps }}{% endif %}
+                                                {% if workout.weight %}| Weight: {{ workout.weight }}{% endif %}
+                                            </small>
+                                        </div>
+                                        <span class="badge bg-primary rounded-pill">#{{ workout.position }}</span>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center py-3">
+                            <i class="bi bi-inbox"></i><br>
+                            Nessun allenamento assegnato
+                        </p>
+                    {% endif %}
+                </div>
+                <div class="card-footer text-center">
+                    <a href="{{ url_for('day_view', day_name=day) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-arrow-right"></i> Visualizza
+                    </a>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+
+<script>
+    let draggedElement = null;
+
+    const dayColumns = document.querySelectorAll('.day-column');
+
+    dayColumns.forEach(col => {
+        col.addEventListener('dragstart', (e) => {
+            draggedElement = col;
+            col.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        col.addEventListener('dragend', (e) => {
+            col.classList.remove('dragging');
+            dayColumns.forEach(c => c.classList.remove('drag-over'));
+        });
+
+        col.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (col !== draggedElement) {
+                col.classList.add('drag-over');
+            }
+        });
+
+        col.addEventListener('dragleave', (e) => {
+            col.classList.remove('drag-over');
+        });
+
+        col.addEventListener('drop', (e) => {
+            e.preventDefault();
+            col.classList.remove('drag-over');
+            
+            if (draggedElement !== col) {
+                // Scambia gli elementi nel DOM
+                const container = document.getElementById('days-container');
+                const draggedIndex = Array.from(dayColumns).indexOf(draggedElement);
+                const targetIndex = Array.from(dayColumns).indexOf(col);
+                
+                if (draggedIndex < targetIndex) {
+                    col.parentNode.insertBefore(draggedElement, col.nextSibling);
+                } else {
+                    col.parentNode.insertBefore(draggedElement, col);
+                }
+                
+                // Aggiorna l'ordine sul server
+                updateDayOrder();
+            }
+        });
+    });
+
+    function updateDayOrder() {
+        const dayColumns = document.querySelectorAll('.day-column');
+        const order = Array.from(dayColumns).map(col => col.dataset.day);
+        
+        // Crea la nuova mappatura: Day1, Day2, Day3, ...
+        const newOrder = {};
+        order.forEach((oldDay, index) => {
+            newOrder[oldDay] = `Day${index + 1}`;
+        });
+
+        console.log('Nuovo ordine:', newOrder);
+
+        fetch('{{ url_for("reorder_days_batch") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ mapping: newOrder })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('✓ Giorni riordinati');
+                location.reload(); // Ricarica per vedere i nomi aggiornati
+            } else {
+                alert('Errore nel riordino: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Errore:', error);
+            alert('Errore nel riordino dei giorni');
+        });
+    }
+</script>
+{% endblock %}

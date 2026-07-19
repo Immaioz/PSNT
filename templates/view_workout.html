@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}{{ w.exercise }} - Workout Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+    .exercise-detail-section { border-top: 2px solid #667eea; margin-top: 1.5rem; padding-top: 1.5rem; }
+    .exercise-gif { border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,.15); max-width: 280px; }
+    .exercise-steps { counter-reset: step; list-style: none; padding-left: 0; }
+    .exercise-steps li {
+        counter-increment: step; position: relative;
+        padding: 8px 0 8px 40px; border-bottom: 1px solid #f0f0f0;
+    }
+    .exercise-steps li:last-child { border-bottom: none; }
+    .exercise-steps li::before {
+        content: counter(step); position: absolute; left: 0; top: 8px;
+        width: 28px; height: 28px; border-radius: 50%;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: #fff; font-size: .8rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .muscle-badge { font-size: .85rem; padding: 5px 12px; border-radius: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary mb-3">
+            <i class="bi bi-arrow-left"></i> Indietro
+        </a>
+
+        <div class="card shadow">
+            <div class="card-header bg-gradient text-white">
+                {% if exercise_detail %}
+                    {% if exercise_detail.name_it and exercise_detail.name_it != exercise_detail.name %}
+                        <h2 class="mb-0">{{ exercise_detail.name_it }}<br><small class="opacity-75" style="font-size:.55em;">{{ exercise_detail.name }}</small></h2>
+                    {% else %}
+                        <h2 class="mb-0">{{ exercise_detail.name }}</h2>
+                    {% endif %}
+                {% else %}
+                    <h2 class="mb-0">{{ w.exercise }}</h2>
+                {% endif %}
+            </div>
+            <div class="card-body p-4">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <p><strong>Data:</strong> <span class="badge bg-info">{{ w.date.strftime('%d/%m/%Y') }}</span></p>
+                        <p><strong>Giorno:</strong> <span class="badge bg-primary">{{ w.day or 'N/A' }}</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Creato:</strong> {{ w.created_at.strftime('%d/%m/%Y %H:%M') }}</p>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <p><strong>Set:</strong> {{ w.sets or 'N/A' }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <p><strong>Reps:</strong> {{ w.reps or 'N/A' }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <p><strong>Peso:</strong> {{ w.weight or 'N/A' }} kg</p>
+                    </div>
+                </div>
+
+                {% if w.notes %}
+                    <div class="mb-4">
+                        <strong>Note:</strong>
+                        <p class="bg-light p-3 rounded mt-2">{{ w.notes }}</p>
+                    </div>
+                {% endif %}
+
+                {% if exercise_detail %}
+                <div class="exercise-detail-section">
+                    <h4 class="mb-3"><i class="bi bi-info-circle"></i> Dettagli Esercizio</h4>
+                    <div class="row">
+                        {% if exercise_detail.gif_url %}
+                        <div class="col-md-4 mb-3 text-center">
+                            <img src="{{ exercise_detail.gif_url }}" alt="{{ exercise_detail.name }}" class="exercise-gif img-fluid">
+                        </div>
+                        {% endif %}
+                        <div class="col-md-{{ '8' if exercise_detail.gif_url else '12' }} mb-3">
+                            <div class="mb-2">
+                                {% if exercise_detail.body_part_it %}
+                                    <span class="badge muscle-badge bg-primary">{{ exercise_detail.body_part_it }}</span>
+                                {% endif %}
+                                {% if exercise_detail.target_it %}
+                                    <span class="badge muscle-badge bg-success">{{ exercise_detail.target_it }}</span>
+                                {% endif %}
+                                {% if exercise_detail.equipment_it %}
+                                    <span class="badge muscle-badge bg-warning text-dark">{{ exercise_detail.equipment_it }}</span>
+                                {% endif %}
+                            </div>
+                            {% if exercise_detail.secondary_muscles %}
+                            <div class="mt-2">
+                                <strong class="small text-muted">Muscoli secondari:</strong>
+                                {% for m in exercise_detail.secondary_muscles %}
+                                    <span class="badge bg-light text-dark">{{ m }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if exercise_detail.instructions and exercise_detail.instructions.it %}
+                    <div class="mt-3">
+                        <h5><i class="bi bi-list-check"></i> Istruzioni</h5>
+                        <p class="bg-light p-3 rounded">{{ exercise_detail.instructions.it }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if exercise_detail.instruction_steps and exercise_detail.instruction_steps.it %}
+                    <div class="mt-3">
+                        <h5><i class="bi bi-list-ol"></i> Passi</h5>
+                        <ol class="exercise-steps">
+                            {% for step in exercise_detail.instruction_steps.it %}
+                                <li>{{ step }}</li>
+                            {% endfor %}
+                        </ol>
+                    </div>
+                    {% endif %}
+
+                    {% if exercise_detail.attribution %}
+                    <p class="text-muted small mt-3"><i class="bi bi-info-circle"></i> {{ exercise_detail.attribution }}</p>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer d-flex gap-2">
+                <a href="{{ url_for('edit_workout', workout_id=w.id) }}" class="btn btn-warning">
+                    <i class="bi bi-pencil"></i> Modifica
+                </a>
+                <form method="POST" action="{{ url_for('delete_workout', workout_id=w.id) }}" style="display: inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Sei sicuro?')">
+                        <i class="bi bi-trash"></i> Cancella
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Modifica - {{ w.exercise }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <a href="{{ url_for('view_workout', workout_id=w.id) }}" class="btn btn-secondary mb-3">
+            <i class="bi bi-arrow-left"></i> Indietro
+        </a>
+
+        <h1 class="mb-4"><i class="bi bi-pencil"></i> Modifica Allenamento</h1>
+        
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <form method="POST" novalidate>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="date" class="form-label">Data</label>
+                            <input type="date" class="form-control form-control-lg" id="date" name="date" value="{{ w.date.isoformat() }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="day" class="form-label">Giorno</label>
+                            <select class="form-select form-select-lg" id="day" name="day">
+                                <option value="">-- Seleziona un giorno --</option>
+                                <option value="Day1" {% if w.day == 'Day1' %}selected{% endif %}>Day 1</option>
+                                <option value="Day2" {% if w.day == 'Day2' %}selected{% endif %}>Day 2</option>
+                                <option value="Day3" {% if w.day == 'Day3' %}selected{% endif %}>Day 3</option>
+                                <option value="Day4" {% if w.day == 'Day4' %}selected{% endif %}>Day 4</option>
+                                <option value="Day5" {% if w.day == 'Day5' %}selected{% endif %}>Day 5</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="exercise" class="form-label">Esercizio *</label>
+                        <input type="text" class="form-control form-control-lg" id="exercise" name="exercise" value="{{ w.exercise }}" placeholder="Cerca o scrivi un esercizio..." autocomplete="off" required>
+                        <input type="hidden" id="exercise_id" name="exercise_id" value="{{ exercise_id }}">
+                    </div>
+
+                    {% include 'exercise_autocomplete.html' %}
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="sets" class="form-label">Set</label>
+                            <input type="number" class="form-control form-control-lg" id="sets" name="sets" value="{{ w.sets or '' }}">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="reps" class="form-label">Reps</label>
+                            <input type="text" class="form-control form-control-lg" id="reps" name="reps" value="{{ w.reps or '' }}">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="weight" class="form-label">Peso (kg)</label>
+                            <input type="text" class="form-control form-control-lg" id="weight" name="weight" value="{{ w.weight or '' }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="notes" class="form-label">Note</label>
+                        <textarea class="form-control form-control-lg" id="notes" name="notes" rows="3">{{ w.notes or '' }}</textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-check-circle"></i> Salva
+                        </button>
+                        <a href="{{ url_for('view_workout', workout_id=w.id) }}" class="btn btn-secondary btn-lg">
+                            <i class="bi bi-x-circle"></i> Annulla
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
