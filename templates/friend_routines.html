@@ -31,7 +31,7 @@
         </h1>
         <small class="text-muted">{{ routine_data|length }} routine{{ 'e' if routine_data|length != 1 }}</small>
     </div>
-    <a href="{{ url_for('friend_stats', user_id=target.id) }}" class="btn btn-sm btn-outline-primary" title="Stats">
+    <a href="{{ url_for('friend_stats', token=target.public_token) }}" class="btn btn-sm btn-outline-primary" title="Stats">
         <i class="bi bi-graph-up"></i> Stats
     </a>
 </div>
@@ -64,10 +64,10 @@
                 </div>
                 {% if rd.exercises %}
                 <div class="card-footer d-flex gap-2 py-3">
-                    <a href="{{ url_for('friend_routine_detail', user_id=target.id, token=rd.routine.public_token) }}" class="btn btn-visualizza flex-grow-1">
+                    <a href="{{ url_for('friend_routine_detail', token=target.public_token, routine_token=rd.routine.public_token) }}" class="btn btn-visualizza flex-grow-1">
                         <i class="bi bi-eye"></i> Visualizza
                     </a>
-                    <form method="POST" action="{{ url_for('import_routine', user_id=target.id, token=rd.routine.public_token) }}" class="flex-grow-1">
+                    <form method="POST" action="{{ url_for('import_routine', token=target.public_token, routine_token=rd.routine.public_token) }}" class="flex-grow-1">
                         <button type="submit" class="btn btn-success w-100" onclick="return confirm('Importare la routine {{ rd.routine.name }} nel tuo account?')">
                             <i class="bi bi-download"></i> Importa
                         </button>

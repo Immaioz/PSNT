@@ -74,7 +74,7 @@
                     {% else %}
                         <p class="text-muted text-center py-3 mb-0">
                             <i class="bi bi-inbox"></i><br>
-                            Nessun esercizio. <a href="{{ url_for('manage_routine', routine_id=rd.routine.id) }}">Aggiungine!</a>
+                            Nessun esercizio. <a href="{{ url_for('manage_routine', token=rd.routine.public_token) }}">Aggiungine!</a>
                         </p>
                     {% endif %}
                 </div>
@@ -84,7 +84,7 @@
                             <i class="bi bi-play-fill"></i> Avvia Routine
                         </button>
                     </form>
-                    <a href="{{ url_for('manage_routine', routine_id=rd.routine.id) }}" class="btn btn-outline-primary" title="Gestisci esercizi">
+                    <a href="{{ url_for('manage_routine', token=rd.routine.public_token) }}" class="btn btn-outline-primary" title="Gestisci esercizi">
                         <i class="bi bi-gear"></i>
                     </a>
                 </div>
@@ -105,7 +105,8 @@
 <script>
 const ROUTINE_RENAME_URL = '{{ url_for("rename_routine", routine_id=0) }}';
 const ROUTINE_DELETE_URL = '{{ url_for("delete_routine", routine_id=0) }}';
-const ROUTINE_MANAGE_URL = '{{ url_for("manage_routine", routine_id=0) }}';
+const ROUTINE_MANAGE_URL = '{{ url_for("manage_routine", token="PLACEHOLDER") }}';
+const ROUTINE_MANAGE_BASE = ROUTINE_MANAGE_URL.replace('PLACEHOLDER', '');
 
 function routineUrl(template, id) {
     return template.replace('/0', '/' + id);
@@ -119,8 +120,8 @@ function addRoutine() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name: name.trim()})
     }).then(r => r.json()).then(data => {
-        if (data.id) {
-            location.href = routineUrl(ROUTINE_MANAGE_URL, data.id);
+        if (data.id && data.token) {
+            location.href = ROUTINE_MANAGE_BASE + data.token;
         } else {
             alert('Errore: ' + (data.error || 'sconosciuto'));
         }

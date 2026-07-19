@@ -37,10 +37,10 @@
                 <div>
                     {% if f and f.status == 'accepted' %}
                         <span class="badge bg-success"><i class="bi bi-check-lg"></i> Amico</span>
-                        <a href="{{ url_for('friend_stats', user_id=u.id) }}" class="btn btn-sm btn-outline-primary ms-1">
+                        <a href="{{ url_for('friend_stats', token=u.public_token) }}" class="btn btn-sm btn-outline-primary ms-1">
                             <i class="bi bi-graph-up"></i> Stats
                         </a>
-                        <a href="{{ url_for('friend_routines', user_id=u.id) }}" class="btn btn-sm btn-outline-secondary ms-1">
+                        <a href="{{ url_for('friend_routines', token=u.public_token) }}" class="btn btn-sm btn-outline-secondary ms-1">
                             <i class="bi bi-calendar-check"></i> Routine
                         </a>
                     {% elif f and f.status == 'pending' and f.receiver_id == current_user.id %}

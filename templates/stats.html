@@ -126,7 +126,7 @@
         {% else %}
         <div class="alert alert-secondary">
             <i class="bi bi-info-circle"></i> Nessun esercizio in {{ r.name }}.
-            <a href="{{ url_for('manage_routine', routine_id=r.id) }}" class="alert-link">Gestisci la routine</a>
+            <a href="{{ url_for('manage_routine', token=r.public_token) }}" class="alert-link">Gestisci la routine</a>
         </div>
         {% endif %}
     </div>

@@ -14,7 +14,7 @@
         {% for item in friends %}
         {% set u = item.user %}
         <div class="d-flex justify-content-between align-items-center px-3 py-3" style="border-bottom:1px solid var(--border-color);">
-            <a href="{{ url_for('friend_routines', user_id=u.id) }}" class="d-flex align-items-center gap-3 text-decoration-none" style="color:var(--text-color);">
+            <a href="{{ url_for('friend_routines', token=u.public_token) }}" class="d-flex align-items-center gap-3 text-decoration-none" style="color:var(--text-color);">
                 {% if u.profile_image %}
                     <img src="{{ u.profile_image }}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">
                 {% else %}

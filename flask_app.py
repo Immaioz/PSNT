@@ -61,6 +61,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     profile_image = db.Column(db.Text, nullable=True)
     friend_code = db.Column(db.String(4), unique=True, nullable=True, index=True)
+    public_token = db.Column(db.String(36), unique=True, nullable=True, index=True)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     routines = db.relationship('Routine', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -176,6 +177,13 @@ def _generate_public_token():
     while True:
         token = str(uuid.uuid4())
         if not Routine.query.filter_by(public_token=token).first():
+            return token
+
+
+def _generate_user_public_token():
+    while True:
+        token = str(uuid.uuid4())
+        if not User.query.filter_by(public_token=token).first():
             return token
 
 
@@ -309,6 +317,14 @@ def ensure_database():
                     db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
                     db.session.commit()
                     print("✓ Colonna is_admin aggiunta a user")
+                if "public_token" not in user_cols:
+                    db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN public_token VARCHAR(36)"))
+                    db.session.commit()
+                    print("✓ Colonna public_token aggiunta a user")
+                    for u in User.query.filter_by(public_token=None).all():
+                        u.public_token = _generate_user_public_token()
+                    db.session.commit()
+                    print("✓ public_token generati per utenti esistenti")
 
             all_users = User.query.all()
             for user in all_users:
@@ -327,7 +343,8 @@ def ensure_database():
                 admin = User(
                     username=admin_username,
                     email=os.environ.get("ADMIN_EMAIL", "admin@example.com"),
-                    is_admin=True
+                    is_admin=True,
+                    public_token=_generate_user_public_token(),
                 )
                 admin.set_password(admin_password)
                 db.session.add(admin)
@@ -589,7 +606,8 @@ def register():
             user = User(
                 username=form.username.data.strip(),
                 email=form.email.data.strip().lower(),
-                friend_code=_generate_friend_code()
+                friend_code=_generate_friend_code(),
+                public_token=_generate_user_public_token(),
             )
             user.set_password(form.password.data)
 
@@ -623,7 +641,9 @@ def login():
 
             if not user.friend_code:
                 user.friend_code = _generate_friend_code()
-                db.session.commit()
+            if not user.public_token:
+                user.public_token = _generate_user_public_token()
+            db.session.commit()
 
             login_user(user, remember=form.remember_me.data)
             next_page = request.args.get('next')
@@ -1016,17 +1036,17 @@ def friends_list():
     return render_template("amici.html", friends=friend_users)
 
 
-@app.route("/friend-stats/<int:user_id>")
+@app.route("/friend-stats/<token>")
 @login_required
-def friend_stats(user_id):
-    target = db.session.get(User, user_id)
+def friend_stats(token):
+    target = User.query.filter_by(public_token=token).first()
     if not target:
         flash("✗ Utente non trovato.", "danger")
         return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
-        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
-        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == target.id)) |
+        ((Friendship.requester_id == target.id) & (Friendship.receiver_id == current_user.id)),
         Friendship.status == "accepted"
     ).first()
 
@@ -1086,17 +1106,17 @@ def friend_stats(user_id):
     return render_template("friend_stats.html", target=target, routine_stats=routine_stats, routines=routines)
 
 
-@app.route("/friend-routines/<int:user_id>")
+@app.route("/friend-routines/<token>")
 @login_required
-def friend_routines(user_id):
-    target = db.session.get(User, user_id)
+def friend_routines(token):
+    target = User.query.filter_by(public_token=token).first()
     if not target:
         flash("✗ Utente non trovato.", "danger")
         return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
-        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
-        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == target.id)) |
+        ((Friendship.requester_id == target.id) & (Friendship.receiver_id == current_user.id)),
         Friendship.status == "accepted"
     ).first()
 
@@ -1118,17 +1138,17 @@ def friend_routines(user_id):
     return render_template("friend_routines.html", target=target, routine_data=routine_data)
 
 
-@app.route("/friend-routine/<int:user_id>/<token>")
+@app.route("/friend-routine/<token>/<routine_token>")
 @login_required
-def friend_routine_detail(user_id, token):
-    target = db.session.get(User, user_id)
+def friend_routine_detail(token, routine_token):
+    target = User.query.filter_by(public_token=token).first()
     if not target:
         flash("✗ Utente non trovato.", "danger")
         return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
-        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
-        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == target.id)) |
+        ((Friendship.requester_id == target.id) & (Friendship.receiver_id == current_user.id)),
         Friendship.status == "accepted"
     ).first()
 
@@ -1136,10 +1156,10 @@ def friend_routine_detail(user_id, token):
         flash("✗ Puoi vedere le routine solo degli amici accettati.", "danger")
         return redirect(url_for("friends_list"))
 
-    routine = Routine.query.filter_by(public_token=token, user_id=target.id).first()
+    routine = Routine.query.filter_by(public_token=routine_token, user_id=target.id).first()
     if not routine:
         flash("✗ Routine non trovata.", "danger")
-        return redirect(url_for("friend_routines", user_id=target.id))
+        return redirect(url_for("friend_routines", token=target.public_token))
 
     exercises = RoutineExercise.query.filter_by(routine_id=routine.id).order_by(
         func.coalesce(RoutineExercise.position, 9999).asc(), RoutineExercise.position.asc()
@@ -1148,17 +1168,17 @@ def friend_routine_detail(user_id, token):
     return render_template("friend_routine_detail.html", routine=routine, exercises=exercises, target=target)
 
 
-@app.route("/import-routine/<int:user_id>/<token>", methods=["POST"])
+@app.route("/import-routine/<token>/<routine_token>", methods=["POST"])
 @login_required
-def import_routine(user_id, token):
-    target = db.session.get(User, user_id)
+def import_routine(token, routine_token):
+    target = User.query.filter_by(public_token=token).first()
     if not target:
         flash("✗ Utente non trovato.", "danger")
         return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
-        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
-        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == target.id)) |
+        ((Friendship.requester_id == target.id) & (Friendship.receiver_id == current_user.id)),
         Friendship.status == "accepted"
     ).first()
 
@@ -1166,10 +1186,10 @@ def import_routine(user_id, token):
         flash("✗ Non hai accesso.", "danger")
         return redirect(url_for("friends_list"))
 
-    source_routine = Routine.query.filter_by(public_token=token, user_id=target.id).first()
+    source_routine = Routine.query.filter_by(public_token=routine_token, user_id=target.id).first()
     if not source_routine:
         flash("✗ Routine non valida.", "danger")
-        return redirect(url_for("friend_routines", user_id=user_id))
+        return redirect(url_for("friend_routines", token=target.public_token))
 
     source_exercises = RoutineExercise.query.filter_by(routine_id=source_routine.id).order_by(RoutineExercise.position.asc()).all()
 
@@ -1250,7 +1270,7 @@ def add_routine():
         routine = Routine(user_id=current_user.id, name=name, position=(max_pos or 0) + 1, public_token=_generate_public_token())
         db.session.add(routine)
         db.session.commit()
-        return jsonify({"id": routine.id, "name": routine.name, "position": routine.position}), 201
+        return jsonify({"id": routine.id, "name": routine.name, "position": routine.position, "token": routine.public_token}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 400
@@ -1308,11 +1328,11 @@ def delete_routine(routine_id):
 
 # ============= ROUTES MANAGE ROUTINE TEMPLATE =============
 
-@app.route("/routines/<int:routine_id>/manage")
+@app.route("/routines/<token>/manage")
 @login_required
-def manage_routine(routine_id):
-    routine = Routine.query.get_or_404(routine_id)
-    if routine.user_id != current_user.id:
+def manage_routine(token):
+    routine = Routine.query.filter_by(public_token=token, user_id=current_user.id).first()
+    if not routine:
         flash("✗ Non hai accesso a questa routine.", "danger")
         return redirect(url_for("dashboard"))
 
