@@ -961,10 +961,6 @@ def remove_friend(friendship_id):
 def notifications():
     received = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").all()
     sent = Friendship.query.filter_by(requester_id=current_user.id, status="pending").all()
-    friends = Friendship.query.filter(
-        ((Friendship.requester_id == current_user.id) | (Friendship.receiver_id == current_user.id)),
-        Friendship.status == "accepted"
-    ).all()
 
     received_users = []
     for f in received:
@@ -978,6 +974,18 @@ def notifications():
         if u:
             sent_users.append({"friendship": f, "user": u})
 
+    return render_template("notifications.html",
+                           received=received_users, sent=sent_users)
+
+
+@app.route("/amici")
+@login_required
+def friends_list():
+    friends = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) | (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).all()
+
     friend_users = []
     for f in friends:
         uid = f.receiver_id if f.requester_id == current_user.id else f.requester_id
@@ -985,8 +993,7 @@ def notifications():
         if u:
             friend_users.append({"friendship": f, "user": u})
 
-    return render_template("notifications.html",
-                           received=received_users, sent=sent_users, friends=friend_users)
+    return render_template("amici.html", friends=friend_users)
 
 
 @app.route("/friend-stats/<int:user_id>")
@@ -995,7 +1002,7 @@ def friend_stats(user_id):
     target = db.session.get(User, user_id)
     if not target:
         flash("✗ Utente non trovato.", "danger")
-        return redirect(url_for("notifications"))
+        return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
         ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
@@ -1005,7 +1012,7 @@ def friend_stats(user_id):
 
     if not f:
         flash("✗ Puoi vedere le stats solo degli amici accettati.", "danger")
-        return redirect(url_for("notifications"))
+        return redirect(url_for("friends_list"))
 
     routines = Routine.query.filter_by(user_id=target.id).order_by(Routine.position.asc()).all()
     routine_stats = {}
@@ -1065,7 +1072,7 @@ def friend_routines(user_id):
     target = db.session.get(User, user_id)
     if not target:
         flash("✗ Utente non trovato.", "danger")
-        return redirect(url_for("notifications"))
+        return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
         ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
@@ -1075,7 +1082,7 @@ def friend_routines(user_id):
 
     if not f:
         flash("✗ Puoi vedere le routine solo degli amici accettati.", "danger")
-        return redirect(url_for("notifications"))
+        return redirect(url_for("friends_list"))
 
     routines = Routine.query.filter_by(user_id=target.id).order_by(Routine.position.asc()).all()
     routine_data = []
@@ -1097,7 +1104,7 @@ def import_routine(user_id, routine_id):
     target = db.session.get(User, user_id)
     if not target:
         flash("✗ Utente non trovato.", "danger")
-        return redirect(url_for("notifications"))
+        return redirect(url_for("friends_list"))
 
     f = Friendship.query.filter(
         ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
@@ -1107,7 +1114,7 @@ def import_routine(user_id, routine_id):
 
     if not f:
         flash("✗ Non hai accesso.", "danger")
-        return redirect(url_for("notifications"))
+        return redirect(url_for("friends_list"))
 
     source_routine = db.session.get(Routine, routine_id)
     if not source_routine or source_routine.user_id != target.id:
