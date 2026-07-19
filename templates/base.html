@@ -193,6 +193,19 @@
                                 <i class="bi bi-moon-stars"></i>
                             </button>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark-readable" href="{{ url_for('search_users') }}">
+                                <i class="bi bi-search"></i> Cerca
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark-readable" href="{{ url_for('notifications') }}">
+                                <i class="bi bi-bell"></i> Notifiche
+                                {% if pending_requests_count > 0 %}
+                                    <span class="badge bg-danger" style="font-size:.6rem;">{{ pending_requests_count }}</span>
+                                {% endif %}
+                            </a>
+                        </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle text-dark-readable" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 {% if current_user.profile_image %}
@@ -200,18 +213,9 @@
                                 {% else %}
                                     <i class="bi bi-person-circle"></i>
                                 {% endif %}
-                                {{ current_user.username }}
+                                {{ current_user.username }}<span class="text-muted" style="font-size:.75rem;">#{{ current_user.friend_code }}</span>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" style="background:var(--surface-color);border-color:var(--border-color);">
-                                <li><a class="dropdown-item" href="{{ url_for('search_users') }}" style="color:var(--text-color);"><i class="bi bi-search me-2"></i>Cerca</a></li>
-                                <li>
-                                    <a class="dropdown-item" href="{{ url_for('notifications') }}" style="color:var(--text-color);">
-                                        <i class="bi bi-bell me-2"></i>Notifiche
-                                        {% if pending_requests_count > 0 %}
-                                            <span class="badge bg-danger ms-1" style="font-size:.65rem;">{{ pending_requests_count }}</span>
-                                        {% endif %}
-                                    </a>
-                                </li>
                                 <li><a class="dropdown-item" href="{{ url_for('profile') }}" style="color:var(--text-color);"><i class="bi bi-gear me-2"></i>Profilo</a></li>
                                 <li><a class="dropdown-item" href="{{ url_for('stats') }}" style="color:var(--text-color);"><i class="bi bi-graph-up me-2"></i>Stats</a></li>
                                 <li><hr class="dropdown-divider" style="border-color:var(--border-color);"></li>

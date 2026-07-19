@@ -590,6 +590,10 @@ def login():
                 flash("✗ Username o password non validi.", "danger")
                 return redirect(url_for("login"))
 
+            if not user.friend_code:
+                user.friend_code = _generate_friend_code()
+                db.session.commit()
+
             login_user(user, remember=form.remember_me.data)
             next_page = request.args.get('next')
             if not next_page or not url_has_allowed_host_and_scheme(next_page):
