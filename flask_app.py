@@ -741,6 +741,43 @@ def admin_reset_password(user_id):
     return redirect(url_for("admin_panel"))
 
 
+@app.route("/admin/edit-user/<int:user_id>", methods=["POST"])
+@login_required
+def admin_edit_user(user_id):
+    if not current_user.is_admin:
+        flash("✗ Accesso negato.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    new_username = request.form.get("username", "").strip()
+    new_friend_code = request.form.get("friend_code", "").strip()
+
+    if new_username and new_username != user.username:
+        existing = User.query.filter(User.username == new_username, User.id != user.id).first()
+        if existing:
+            flash("✗ Username già in uso.", "danger")
+            return redirect(url_for("admin_panel"))
+        user.username = new_username
+
+    if new_friend_code and new_friend_code != user.friend_code:
+        if not new_friend_code.isdigit() or len(new_friend_code) != 4:
+            flash("✗ Il friend code deve essere di 4 cifre.", "danger")
+            return redirect(url_for("admin_panel"))
+        existing = User.query.filter(User.friend_code == new_friend_code, User.id != user.id).first()
+        if existing:
+            flash("✗ Friend code già in uso.", "danger")
+            return redirect(url_for("admin_panel"))
+        user.friend_code = new_friend_code
+
+    db.session.commit()
+    flash(f"✓ Utente aggiornato.", "success")
+    return redirect(url_for("admin_panel"))
+
+
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():

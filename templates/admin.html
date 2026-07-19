@@ -120,6 +120,9 @@
                         <td class="text-center"><small class="text-muted">{{ u.created_at.strftime('%d/%m/%Y') }}</small></td>
                         <td class="text-center">
                             <div class="d-flex gap-1 justify-content-center flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-info" onclick="editUser({{ u.id }}, '{{ u.username | e }}', '{{ u.friend_code or '' }}')" title="Modifica utente">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
                                 {% if u.id != current_user.id %}
                                 <form method="POST" action="{{ url_for('toggle_admin', user_id=u.id) }}" style="display:inline;">
                                     <button type="submit" class="btn btn-sm {% if u.is_admin %}btn-outline-warning{% else %}btn-outline-primary{% endif %}" title="{% if u.is_admin %}Rimuovi admin{% else %}Promuovi ad admin{% endif %}">
@@ -148,4 +151,46 @@
         </div>
     </div>
 </div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" style="color:var(--text-color);"><i class="bi bi-pencil"></i> Modifica Utente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editUserForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Username</label>
+                        <input type="text" class="form-control" id="edit_username" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Friend Code</label>
+                        <div class="input-group">
+                            <span class="input-group-text">#</span>
+                            <input type="text" class="form-control" id="edit_friend_code" name="friend_code" maxlength="4" pattern="[0-9]{4}" placeholder="4 cifre" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Salva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editUser(id, username, friendCode) {
+    document.getElementById('editUserForm').action = '/admin/edit-user/' + id;
+    document.getElementById('edit_username').value = username;
+    document.getElementById('edit_friend_code').value = friendCode;
+    new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+</script>
 {% endblock %}
