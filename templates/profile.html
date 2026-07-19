@@ -23,6 +23,9 @@
         font-size: 3rem;
         color: var(--text-muted);
     }
+    #imageNotice {
+        display: none;
+    }
 </style>
 {% endblock %}
 
@@ -38,20 +41,24 @@
     <div class="col-md-6">
         <div class="card shadow-sm">
             <div class="card-body p-4">
-                <form method="POST" action="{{ url_for('profile') }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ url_for('profile') }}" enctype="multipart/form-data" id="profileForm">
                     <div class="text-center mb-4">
                         {% if current_user.profile_image %}
-                            <img src="{{ current_user.profile_image }}" alt="Avatar" class="profile-avatar mb-2">
+                            <img src="{{ current_user.profile_image }}" alt="Avatar" class="profile-avatar mb-2" id="avatarPreview">
                         {% else %}
-                            <div class="profile-avatar-placeholder mx-auto mb-2">
+                            <div class="profile-avatar-placeholder mx-auto mb-2" id="avatarPlaceholder">
                                 <i class="bi bi-person-fill"></i>
                             </div>
+                            <img src="" alt="Avatar" class="profile-avatar mb-2" id="avatarPreview" style="display:none;">
                         {% endif %}
                         <div>
                             <label for="profile_image" class="btn btn-sm btn-outline-primary" style="cursor:pointer;">
                                 <i class="bi bi-camera"></i> Cambia foto
                             </label>
                             <input type="file" id="profile_image" name="profile_image" accept="image/*" class="d-none">
+                        </div>
+                        <div id="imageNotice" class="alert alert-warning mt-2 mb-0 py-1 px-2" style="font-size:.85rem;">
+                            <i class="bi bi-exclamation-triangle"></i> Immagine selezionata. Clicca <strong>Salva Modifiche</strong> per applicarla.
                         </div>
                     </div>
 
@@ -89,4 +96,24 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('profile_image').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const notice = document.getElementById('imageNotice');
+    notice.style.display = 'block';
+    const preview = document.getElementById('avatarPreview');
+    const placeholder = document.getElementById('avatarPlaceholder');
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        preview.src = ev.target.result;
+        preview.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+});
+</script>
 {% endblock %}
