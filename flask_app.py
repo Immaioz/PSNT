@@ -57,6 +57,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    profile_image = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     routines = db.relationship('Routine', backref='user', lazy=True, cascade='all, delete-orphan')
     routine_exercises = db.relationship('RoutineExercise', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -239,6 +240,13 @@ def ensure_database():
                     print("✓ Colonna superset_id aggiunta a routine_exercise")
             else:
                 print("✓ Nuovo database, nessuna migrazione necessaria")
+
+            if 'user' in existing_tables:
+                user_cols = [c["name"] for c in inspector.get_columns('user')]
+                if "profile_image" not in user_cols:
+                    db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN profile_image TEXT"))
+                    db.session.commit()
+                    print("✓ Colonna profile_image aggiunta a user")
 
             all_users = User.query.all()
             for user in all_users:
@@ -563,6 +571,58 @@ def logout():
     logout_user()
     flash("✓ Logout completato.", "info")
     return redirect(url_for("landing"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    if request.method == "POST":
+        new_username = request.form.get("username", "").strip()
+        new_email = request.form.get("email", "").strip()
+        current_password = request.form.get("current_password", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+
+        if not current_password:
+            flash("✗ Inserisci la password attuale per confermare.", "danger")
+            return redirect(url_for("profile"))
+
+        if not current_user.check_password(current_password):
+            flash("✗ Password errata.", "danger")
+            return redirect(url_for("profile"))
+
+        if new_username and new_username != current_user.username:
+            existing = User.query.filter(User.username == new_username, User.id != current_user.id).first()
+            if existing:
+                flash("✗ Username già in uso.", "danger")
+                return redirect(url_for("profile"))
+            current_user.username = new_username
+
+        if new_email and new_email != current_user.email:
+            existing = User.query.filter(User.email == new_email, User.id != current_user.id).first()
+            if existing:
+                flash("✗ Email già in uso.", "danger")
+                return redirect(url_for("profile"))
+            current_user.email = new_email
+
+        if new_password:
+            current_user.set_password(new_password)
+
+        image_file = request.files.get("profile_image")
+        if image_file and image_file.filename:
+            import base64
+            ext = image_file.filename.rsplit(".", 1)[-1].lower()
+            if ext in ("png", "jpg", "jpeg", "gif", "webp"):
+                data = base64.b64encode(image_file.read()).decode("utf-8")
+                current_user.profile_image = f"data:image/{ext};base64,{data}"
+            else:
+                flash("✗ Formato immagine non supportato.", "danger")
+                return redirect(url_for("profile"))
+
+        db.session.commit()
+        flash("✓ Profilo aggiornato.", "success")
+        return redirect(url_for("profile"))
+
+    return render_template("profile.html")
 
 
 # ============= ROUTES DASHBOARD =============
@@ -1119,16 +1179,13 @@ def stats():
 @app.route("/stats/clear", methods=["POST"])
 @login_required
 def clear_stats():
-    try:
-        uid = current_user.id
-        db.session.execute(text("DELETE FROM weight_history WHERE user_id = :uid"), {"uid": uid})
-        db.session.execute(text("DELETE FROM workout WHERE user_id = :uid"), {"uid": uid})
-        db.session.execute(text("DELETE FROM routine_session WHERE user_id = :uid"), {"uid": uid})
-        db.session.commit()
-        return jsonify({"success": True})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 400
+    uid = current_user.id
+    db.session.execute(text("DELETE FROM weight_history WHERE user_id = :uid"), {"uid": uid})
+    db.session.execute(text("DELETE FROM workout WHERE user_id = :uid"), {"uid": uid})
+    db.session.execute(text("DELETE FROM routine_session WHERE user_id = :uid"), {"uid": uid})
+    db.session.commit()
+    flash("✓ Tutti i dati sono stati cancellati.", "success")
+    return redirect(url_for("stats"))
 
 
 # ============= ROUTE EXERCISE HISTORY FOR CHARTS =============

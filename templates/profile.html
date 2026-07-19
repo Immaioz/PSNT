@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Profilo - PSNT{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid var(--border-color);
+    }
+    .profile-avatar-placeholder {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: var(--bg-color);
+        border: 3px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 3rem;
+        color: var(--text-muted);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('dashboard') }}" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Dashboard</a>
+        <h1 class="mt-1 mb-0" style="color:var(--text-color);"><i class="bi bi-person-circle"></i> Profilo</h1>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('profile') }}" enctype="multipart/form-data">
+                    <div class="text-center mb-4">
+                        {% if current_user.profile_image %}
+                            <img src="{{ current_user.profile_image }}" alt="Avatar" class="profile-avatar mb-2">
+                        {% else %}
+                            <div class="profile-avatar-placeholder mx-auto mb-2">
+                                <i class="bi bi-person-fill"></i>
+                            </div>
+                        {% endif %}
+                        <div>
+                            <label for="profile_image" class="btn btn-sm btn-outline-primary" style="cursor:pointer;">
+                                <i class="bi bi-camera"></i> Cambia foto
+                            </label>
+                            <input type="file" id="profile_image" name="profile_image" accept="image/*" class="d-none">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" value="{{ current_user.username }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" value="{{ current_user.email }}" required>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Nuova Password <small class="text-muted">(lascia vuoto per non cambiare)</small></label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" minlength="6">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="current_password" class="form-label">Password Attuale <small class="text-muted">(richiesta per confermare)</small></label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-check-lg"></i> Salva Modifiche
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="text-center mt-3">
+            <small class="text-muted">Membro dal {{ current_user.created_at.strftime('%d/%m/%Y') }}</small>
+        </div>
+    </div>
+</div>
+{% endblock %}

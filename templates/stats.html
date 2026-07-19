@@ -41,9 +41,11 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 style="color:var(--text-color);"><i class="bi bi-graph-up"></i> Statistiche</h1>
     <div class="d-flex gap-2">
-        <button class="btn btn-outline-danger" onclick="confirmClearStats()" title="Cancella tutti i dati">
-            <i class="bi bi-trash"></i> Reset Stats
-        </button>
+        <form method="POST" action="{{ url_for('clear_stats') }}" id="clearStatsForm" onsubmit="return confirm('Vuoi cancellare TUTTI i dati delle sessioni e dei pesi? Questa azione non può essere annullata.');">
+            <button type="submit" class="btn btn-outline-danger" title="Cancella tutti i dati">
+                <i class="bi bi-trash"></i> Reset Stats
+            </button>
+        </form>
         <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Dashboard
         </a>
@@ -155,28 +157,6 @@
     </div>
 </div>
 
-<!-- Confirm Clear Modal -->
-<div class="modal fade" id="clearStatsModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" style="color:var(--text-color);"><i class="bi bi-exclamation-triangle text-danger"></i> Conferma Reset</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p style="color:var(--text-color);">Vuoi cancellare <strong>tutti</strong> i dati delle sessioni e dei pesi?</p>
-                <p class="text-muted small mb-0">Verranno eliminate tutte le sessioni di allenamento, i workout associati e la cronologia pesi. Le routine template rimarranno intatte.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
-                <button type="button" class="btn btn-danger" onclick="clearAllStats()">
-                    <i class="bi bi-trash"></i> Sì, cancella tutto
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
@@ -263,19 +243,5 @@ function renderChart(data) {
     });
 }
 
-function confirmClearStats() {
-    new bootstrap.Modal(document.getElementById('clearStatsModal')).show();
-}
-
-function clearAllStats() {
-    fetch('{{ url_for("clear_stats") }}', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {'Content-Type': 'application/json'}
-    }).then(r => r.json()).then(data => {
-        if (data.success) location.reload();
-        else alert(data.error || 'Errore');
-    }).catch(e => alert('Errore di rete: ' + e));
-}
 </script>
 {% endblock %}

@@ -188,9 +188,14 @@
                             </button>
                         </li>
                         <li class="nav-item">
-                            <span class="nav-link text-dark-readable">
-                                <i class="bi bi-person-circle"></i> {{ current_user.username }}
-                            </span>
+                            <a class="nav-link text-dark-readable" href="{{ url_for('profile') }}">
+                                {% if current_user.profile_image %}
+                                    <img src="{{ current_user.profile_image }}" alt="" style="width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px;">
+                                {% else %}
+                                    <i class="bi bi-person-circle"></i>
+                                {% endif %}
+                                {{ current_user.username }}
+                            </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link text-dark-readable" href="{{ url_for('dashboard') }}">
