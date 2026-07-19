@@ -8,6 +8,47 @@
     .exercise-row:last-child { border-bottom: none; }
     .exercise-row .name { font-weight: 600; color: var(--text-color); }
     .exercise-row .meta { font-size: 0.8rem; color: var(--text-muted); }
+    .superset-group {
+        border: 2px solid #7c3aed;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    .superset-header {
+        background: #7c3aed;
+        color: #fff;
+        font-size: .75rem;
+        font-weight: 600;
+        padding: 4px 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .superset-group .exercise-row {
+        border-bottom: 1px solid #c4b5fd;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    .superset-group .exercise-row:last-child { border-bottom: none; }
+    .superset-sep {
+        border-top: 2px dashed #c4b5fd;
+        margin: 0;
+    }
+    .btn-link-exercise {
+        font-size: .7rem;
+        padding: 2px 6px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all .15s;
+    }
+    .btn-link-exercise:hover { border-color: #7c3aed; color: #7c3aed; }
+    .btn-link-exercise.active { background: #7c3aed; color: #fff; border-color: #7c3aed; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,.4); } 50% { box-shadow: 0 0 0 6px rgba(124,58,237,0); } }
+    .btn-unlink { font-size: .65rem; padding: 2px 6px; }
 </style>
 {% endblock %}
 
@@ -25,38 +66,67 @@
     </form>
 </div>
 
+<div id="supersetAlert" class="alert alert-warning mb-3" style="display:none;">
+    <i class="bi bi-link-45deg"></i> <strong>Modalita Superset:</strong> clicca il pulsante <i class="bi bi-link"></i> su un altro esercizio per unirlo in superset.
+    <button type="button" class="btn btn-sm btn-outline-warning ms-2" onclick="cancelSuperset()">Annulla</button>
+</div>
+
 {% if exercises %}
 <div class="card mb-4">
     <div class="card-body p-0">
+        {% set ns = namespace(last_superset=None) %}
         {% for ex in exercises %}
-        <div class="exercise-row px-3 d-flex justify-content-between align-items-center">
-            <div class="flex-grow-1">
-                <div class="name">
-                    {% if ex.exercise_id %}
-                        <a href="{{ url_for('exercise_dataset_detail', exercise_id=ex.exercise_id) }}" class="text-decoration-none" style="color:var(--text-color);">{{ ex.exercise }}</a>
-                    {% else %}
-                        {{ ex.exercise }}
-                    {% endif %}
-                    {% if ex.exercise_id %} <span class="badge bg-success" style="font-size:.55rem;"><i class="bi bi-book"></i></span>{% endif %}
+            {% if ex.superset_id and ex.superset_id != ns.last_superset %}
+                {% set ns.last_superset = ex.superset_id %}
+                <div class="superset-group" data-superset-id="{{ ex.superset_id }}">
+                    <div class="superset-header">
+                        <i class="bi bi-link-45deg"></i> SUPERSET
+                        <button class="btn btn-sm btn-outline-light btn-unlink ms-auto" onclick="unsuperset({{ ex.superset_id }})" title="Separa">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+            {% endif %}
+
+            <div class="exercise-row px-3 d-flex justify-content-between align-items-center" data-ex-id="{{ ex.id }}">
+                <div class="flex-grow-1">
+                    <div class="name">
+                        {% if ex.exercise_id %}
+                            <a href="{{ url_for('exercise_dataset_detail', exercise_id=ex.exercise_id) }}" class="text-decoration-none" style="color:var(--text-color);">{{ ex.exercise }}</a>
+                        {% else %}
+                            {{ ex.exercise }}
+                        {% endif %}
+                        {% if ex.exercise_id %} <span class="badge bg-success" style="font-size:.55rem;"><i class="bi bi-book"></i></span>{% endif %}
+                    </div>
+                    <div class="meta">
+                        {% if ex.default_sets %}Set: {{ ex.default_sets }}{% endif %}
+                        {% if ex.default_reps %} | Reps: {{ ex.default_reps }}{% endif %}
+                        {% if ex.notes %} | {{ ex.notes }}{% endif %}
+                        {% if not ex.default_sets and not ex.default_reps %}Nessun default impostato{% endif %}
+                    </div>
                 </div>
-                <div class="meta">
-                    {% if ex.default_sets %}Set: {{ ex.default_sets }}{% endif %}
-                    {% if ex.default_reps %} | Reps: {{ ex.default_reps }}{% endif %}
-                    {% if ex.notes %} | {{ ex.notes }}{% endif %}
-                    {% if not ex.default_sets and not ex.default_reps %}Nessun default impostato{% endif %}
-                </div>
-            </div>
-            <div class="d-flex gap-1">
-                <button class="btn btn-sm btn-outline-primary" onclick="editExercise({{ ex.id }}, '{{ ex.exercise | e }}', '{{ ex.exercise_id or '' }}', '{{ ex.default_sets or '' }}', '{{ ex.default_reps or '' }}', '{{ (ex.notes or '') | e }}')" title="Modifica">
-                    <i class="bi bi-pencil"></i>
-                </button>
-                <form method="POST" action="{{ url_for('delete_routine_exercise', exercise_id=ex.id) }}" style="display:inline;">
-                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio?')" title="Rimuovi">
-                        <i class="bi bi-trash"></i>
+                <div class="d-flex gap-1 align-items-center">
+                    {% if not ex.superset_id %}
+                    <button class="btn-link-exercise" onclick="startSuperset({{ ex.id }}, this)" title="Crea superset con un altro esercizio">
+                        <i class="bi bi-link"></i>
                     </button>
-                </form>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-primary" onclick="editExercise({{ ex.id }}, '{{ ex.exercise | e }}', '{{ ex.exercise_id or '' }}', '{{ ex.default_sets or '' }}', '{{ ex.default_reps or '' }}', '{{ (ex.notes or '') | e }}')" title="Modifica">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <form method="POST" action="{{ url_for('delete_routine_exercise', exercise_id=ex.id) }}" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio?')" title="Rimuovi">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </div>
             </div>
-        </div>
+
+            {% if ex.superset_id %}
+                {% set next_ex = exercises[loop.index] if loop.index < exercises|length else None %}
+                {% if not next_ex or next_ex.superset_id != ex.superset_id %}
+                    </div>
+                {% endif %}
+            {% endif %}
         {% endfor %}
     </div>
 </div>
@@ -114,9 +184,22 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Esercizio *</label>
-                        <input type="text" class="form-control" id="edit_exercise" name="exercise" required>
+                        <input type="text" class="form-control" id="edit_exercise" name="exercise" autocomplete="off" required>
                         <input type="hidden" id="edit_exercise_id" name="exercise_id" value="">
                     </div>
+
+                    <div class="exercise-ac-wrapper">
+                        <div class="exercise-ac-dropdown" id="editExerciseDropdown"></div>
+                    </div>
+                    <div class="exercise-ac-selected" id="editExerciseSelectedPreview">
+                        <img id="editAcPreviewImg" src="" alt="">
+                        <div class="flex-grow-1">
+                            <div class="ac-sel-name"><a id="editAcPreviewLink" href="#" target="_blank"><span id="editAcPreviewName"></span></a></div>
+                            <div class="ac-sel-meta" id="editAcPreviewMeta"></div>
+                        </div>
+                        <button type="button" class="btn-close" id="editAcClearSelection" aria-label="Rimuovi"></button>
+                    </div>
+
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <label class="form-label fw-semibold">Set</label>
@@ -142,6 +225,8 @@
 </div>
 
 <script>
+let pendingSupersetId = null;
+
 function editExercise(id, exercise, exerciseId, sets, reps, notes) {
     document.getElementById('editForm').action = '{{ url_for("edit_routine_exercise", exercise_id=0) }}'.replace('/0', '/' + id);
     document.getElementById('edit_exercise').value = exercise;
@@ -149,7 +234,201 @@ function editExercise(id, exercise, exerciseId, sets, reps, notes) {
     document.getElementById('edit_sets').value = sets;
     document.getElementById('edit_reps').value = reps;
     document.getElementById('edit_notes').value = notes;
+    initEditAutocomplete(exerciseId);
     new bootstrap.Modal(document.getElementById('editModal')).show();
 }
+
+function startSuperset(id, btn) {
+    if (pendingSupersetId && pendingSupersetId !== id) {
+        pairExercises(pendingSupersetId, id);
+        return;
+    }
+    pendingSupersetId = id;
+    document.querySelectorAll('.btn-link-exercise').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('supersetAlert').style.display = '';
+}
+
+function cancelSuperset() {
+    pendingSupersetId = null;
+    document.querySelectorAll('.btn-link-exercise').forEach(b => b.classList.remove('active'));
+    document.getElementById('supersetAlert').style.display = 'none';
+}
+
+function pairExercises(id1, id2) {
+    fetch('{{ url_for("toggle_superset", routine_id=routine.id) }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id1, id2})
+    }).then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+        else alert(data.error || 'Errore');
+    });
+    cancelSuperset();
+}
+
+function unsuperset(supersetId) {
+    const group = document.querySelector('.superset-group[data-superset-id="' + supersetId + '"]');
+    if (!group) return;
+    const ids = Array.from(group.querySelectorAll('[data-ex-id]')).map(el => parseInt(el.dataset.exId));
+    if (ids.length < 2) return;
+    fetch('{{ url_for("unsuperset", exercise_id=0) }}'.replace('/0', '/' + ids[0]), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    }).then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+        else alert(data.error || 'Errore');
+    });
+}
+
+/* ===== Edit Modal Autocomplete ===== */
+(function() {
+    const input = document.getElementById('edit_exercise');
+    const hiddenId = document.getElementById('edit_exercise_id');
+    const dropdown = document.getElementById('editExerciseDropdown');
+    const preview = document.getElementById('editExerciseSelectedPreview');
+    const previewImg = document.getElementById('editAcPreviewImg');
+    const previewName = document.getElementById('editAcPreviewName');
+    const previewLink = document.getElementById('editAcPreviewLink');
+    const previewMeta = document.getElementById('editAcPreviewMeta');
+    const clearBtn = document.getElementById('editAcClearSelection');
+
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentResults = [];
+
+    function showEditPreview(ex) {
+        previewImg.src = ex.image || '';
+        previewImg.style.display = ex.image ? '' : 'none';
+        const nameIt = ex.name_it || ex.name;
+        const nameEn = ex.name;
+        previewName.textContent = nameIt !== nameEn ? nameIt + ' (' + nameEn + ')' : nameIt;
+        previewLink.href = ex.id ? '/exercise/' + ex.id : '#';
+        let meta = ex.body_part_it || ex.body_part || '';
+        if (ex.target_it || ex.target) meta += (meta ? ' · ' : '') + (ex.target_it || ex.target);
+        if (ex.equipment_it || ex.equipment) meta += (meta ? ' · ' : '') + (ex.equipment_it || ex.equipment);
+        previewMeta.textContent = meta;
+        preview.classList.add('show');
+    }
+
+    function clearEditSelection() {
+        hiddenId.value = '';
+        preview.classList.remove('show');
+        input.focus();
+    }
+
+    clearBtn.addEventListener('click', clearEditSelection);
+
+    input.addEventListener('input', function() {
+        if (hiddenId.value && input.value !== previewName.textContent) {
+            hiddenId.value = '';
+            preview.classList.remove('show');
+        }
+        clearTimeout(debounceTimer);
+        const q = input.value.trim();
+        if (q.length < 1) { closeEditDropdown(); return; }
+        debounceTimer = setTimeout(() => fetchEditResults(q), 250);
+    });
+
+    input.addEventListener('keydown', function(e) {
+        if (!dropdown.classList.contains('show')) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(activeIndex + 1, currentResults.length - 1); updateEditActive(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(activeIndex - 1, 0); updateEditActive(); }
+        else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); selectEditItem(currentResults[activeIndex]); }
+        else if (e.key === 'Escape') { closeEditDropdown(); }
+    });
+
+    input.addEventListener('focus', function() {
+        if (currentResults.length > 0 && input.value.trim().length >= 1) {
+            dropdown.classList.add('show');
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.exercise-ac-wrapper') || !e.target.closest('#editExerciseDropdown')) {
+            const modal = document.getElementById('editModal');
+            if (modal && modal.contains(e.target)) return;
+        }
+    });
+
+    function fetchEditResults(q) {
+        fetch('/api/exercises?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(results => {
+                currentResults = results;
+                activeIndex = -1;
+                renderEditDropdown(results);
+            });
+    }
+
+    function renderEditDropdown(results) {
+        if (results.length === 0) {
+            dropdown.innerHTML = '<div class="exercise-ac-item"><span class="text-muted">Nessun risultato</span></div>';
+            dropdown.classList.add('show');
+            return;
+        }
+        dropdown.innerHTML = results.map((ex, i) => {
+            const bodyPartColors = {
+                'back': 'success', 'chest': 'primary', 'shoulders': 'info',
+                'upper arms': 'warning', 'lower arms': 'danger', 'upper legs': 'success',
+                'lower legs': 'primary', 'waist': 'info', 'neck': 'secondary',
+                'cardio': 'danger'
+            };
+            const bpColor = bodyPartColors[ex.body_part] || 'secondary';
+            const nameIt = ex.name_it || ex.name;
+            const nameEn = ex.name;
+            const displayName = nameIt !== nameEn ? nameIt + ' <span class="text-muted" style="font-weight:400;font-size:.75rem;">(' + nameEn + ')</span>' : nameIt;
+            const bodyPartLabel = ex.body_part_it || ex.body_part;
+            const targetLabel = ex.target_it || ex.target;
+            return `<div class="exercise-ac-item" data-index="${i}">
+                ${ex.image ? '<img src="' + ex.image + '" alt="">' : ''}
+                <div class="exercise-ac-item-info">
+                    <div class="exercise-ac-item-name">${displayName}</div>
+                    <div class="exercise-ac-item-meta">
+                        <span class="badge bg-${bpColor}">${bodyPartLabel}</span>
+                        ${targetLabel ? '<span class="badge bg-light text-dark">' + targetLabel + '</span>' : ''}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        dropdown.querySelectorAll('.exercise-ac-item').forEach(el => {
+            el.addEventListener('click', function() {
+                const idx = parseInt(this.dataset.index);
+                selectEditItem(results[idx]);
+            });
+        });
+
+        dropdown.classList.add('show');
+    }
+
+    function selectEditItem(ex) {
+        input.value = ex.name_it || ex.name;
+        hiddenId.value = ex.id;
+        showEditPreview(ex);
+        closeEditDropdown();
+    }
+
+    function updateEditActive() {
+        dropdown.querySelectorAll('.exercise-ac-item').forEach((el, i) => {
+            el.classList.toggle('active', i === activeIndex);
+        });
+    }
+
+    function closeEditDropdown() {
+        dropdown.classList.remove('show');
+        dropdown.innerHTML = '';
+    }
+
+    window.initEditAutocomplete = function(exerciseId) {
+        if (exerciseId) {
+            fetch('/api/exercises/' + exerciseId)
+                .then(r => r.json())
+                .then(ex => { if (ex && !ex.error) showEditPreview(ex); });
+        } else {
+            preview.classList.remove('show');
+        }
+    };
+})();
 </script>
 {% endblock %}

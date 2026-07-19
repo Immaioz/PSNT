@@ -98,6 +98,7 @@ class RoutineExercise(db.Model):
     default_reps = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     position = db.Column(db.Integer, nullable=True)
+    superset_id = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
@@ -127,6 +128,7 @@ class Workout(db.Model):
     weight = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     position = db.Column(db.Integer, nullable=True)
+    superset_id = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
@@ -220,9 +222,21 @@ def ensure_database():
                     db.session.commit()
                     print("✓ Colonna session_id aggiunta")
 
+                if "superset_id" not in cols:
+                    db.session.execute(text("ALTER TABLE workout ADD COLUMN superset_id INTEGER"))
+                    db.session.commit()
+                    print("✓ Colonna superset_id aggiunta a workout")
+
                 if "day" in cols:
                     print("→ Migrazione dati workout -> RoutineExercise/RoutineSession...")
                     _migrate_old_workouts(cols)
+
+            if 'routine_exercise' in existing_tables:
+                re_cols = [c["name"] for c in inspector.get_columns('routine_exercise')]
+                if "superset_id" not in re_cols:
+                    db.session.execute(text("ALTER TABLE routine_exercise ADD COLUMN superset_id INTEGER"))
+                    db.session.commit()
+                    print("✓ Colonna superset_id aggiunta a routine_exercise")
             else:
                 print("✓ Nuovo database, nessuna migrazione necessaria")
 
@@ -759,6 +773,71 @@ def delete_routine_exercise(exercise_id):
     return redirect(url_for("manage_routine", routine_id=routine_id))
 
 
+@app.route("/routines/<int:routine_id>/superset", methods=["POST"])
+@login_required
+def toggle_superset(routine_id):
+    data = request.get_json()
+    id1 = data.get("id1")
+    id2 = data.get("id2")
+    if not id1 or not id2:
+        return jsonify({"error": "Mancano gli ID"}), 400
+
+    re1 = RoutineExercise.query.get(id1)
+    re2 = RoutineExercise.query.get(id2)
+    if not re1 or not re2 or re1.routine_id != routine_id or re2.routine_id != routine_id:
+        return jsonify({"error": "Esercizi non validi"}), 400
+    if re1.user_id != current_user.id or re2.user_id != current_user.id:
+        return jsonify({"error": "Non hai accesso"}), 403
+
+    if re1.superset_id and re1.superset_id == re2.superset_id:
+        return jsonify({"error": "Gia in superset"}), 400
+
+    existing_re1 = RoutineExercise.query.filter(
+        RoutineExercise.routine_id == routine_id,
+        RoutineExercise.superset_id == re1.superset_id,
+        RoutineExercise.superset_id.isnot(None),
+        RoutineExercise.id != re1.id,
+    ).first()
+    existing_re2 = RoutineExercise.query.filter(
+        RoutineExercise.routine_id == routine_id,
+        RoutineExercise.superset_id == re2.superset_id,
+        RoutineExercise.superset_id.isnot(None),
+        RoutineExercise.id != re2.id,
+    ).first()
+
+    if existing_re1 or existing_re2:
+        return jsonify({"error": "Uno degli esercizi e gia in un superset"}), 400
+
+    superset_id = min(re1.id, re2.id)
+    re1.superset_id = superset_id
+    re2.superset_id = superset_id
+    db.session.commit()
+    return jsonify({"success": True, "superset_id": superset_id})
+
+
+@app.route("/routines/exercises/<int:exercise_id>/unsuperset", methods=["POST"])
+@login_required
+def unsuperset(exercise_id):
+    re = RoutineExercise.query.get_or_404(exercise_id)
+    if re.user_id != current_user.id:
+        return jsonify({"error": "Non hai accesso"}), 403
+
+    if not re.superset_id:
+        return jsonify({"error": "Non e in un superset"}), 400
+
+    sid = re.superset_id
+    partner = RoutineExercise.query.filter(
+        RoutineExercise.routine_id == re.routine_id,
+        RoutineExercise.superset_id == sid,
+        RoutineExercise.id != re.id,
+    ).first()
+    re.superset_id = None
+    if partner:
+        partner.superset_id = None
+    db.session.commit()
+    return jsonify({"success": True})
+
+
 @app.route("/routines/<int:routine_id>/exercises/reorder", methods=["POST"])
 @login_required
 def reorder_routine_exercises(routine_id):
@@ -811,6 +890,7 @@ def start_routine(routine_id):
             weight=None,
             notes=re.notes,
             position=re.position,
+            superset_id=re.superset_id,
         )
         db.session.add(workout)
 
@@ -836,7 +916,15 @@ def session_view(session_id):
         name_it = _resolve_exercise_name(w.exercise, w.exercise_id)
         workout_data.append({"workout": w, "name_it": name_it})
 
-    return render_template("session_view.html", session=session, workout_data=workout_data)
+    superset_groups = {}
+    for wd in workout_data:
+        sid = wd["workout"].superset_id
+        if sid:
+            if sid not in superset_groups:
+                superset_groups[sid] = []
+            superset_groups[sid].append(wd)
+
+    return render_template("session_view.html", session=session, workout_data=workout_data, superset_groups=superset_groups)
 
 
 @app.route("/session/<int:session_id>/workout/<int:workout_id>/update", methods=["POST"])
@@ -1000,6 +1088,20 @@ def stats():
         routine_stats[r.name] = exercise_stats
 
     return render_template("stats.html", routine_stats=routine_stats, routines=routines)
+
+
+@app.route("/stats/clear", methods=["POST"])
+@login_required
+def clear_stats():
+    try:
+        Workout.query.filter_by(user_id=current_user.id).delete()
+        RoutineSession.query.filter_by(user_id=current_user.id).delete()
+        WeightHistory.query.filter_by(user_id=current_user.id).delete()
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
 
 
 # ============= ROUTE EXERCISE HISTORY FOR CHARTS =============

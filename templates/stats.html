@@ -16,15 +16,38 @@
     .nav-pills .nav-link { color: var(--primary-color); border: 1px solid var(--border-color); }
     .nav-pills .nav-link.active { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
     .modal-weight-input { max-width: 120px; }
+    .stats-table { width: 100%; border-collapse: collapse; }
+    .stats-table th {
+        padding: 0.6rem 0.75rem;
+        font-weight: 600;
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--text-muted);
+        background: var(--bg-color);
+        border-bottom: 2px solid var(--border-color);
+    }
+    .stats-table td {
+        padding: 0.65rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-color);
+        vertical-align: middle;
+    }
+    .stats-table tr:hover td { background: var(--bg-color); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 style="color:var(--text-color);"><i class="bi bi-graph-up"></i> Statistiche</h1>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> Dashboard
-    </a>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-danger" onclick="confirmClearStats()" title="Cancella tutti i dati">
+            <i class="bi bi-trash"></i> Reset Stats
+        </button>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Dashboard
+        </a>
+    </div>
 </div>
 
 {% if routines|length > 0 %}
@@ -43,13 +66,13 @@
     <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ r.id }}">
         {% if routine_stats[r.name] and routine_stats[r.name]|length > 0 %}
         <div class="card shadow-sm stat-card mb-4">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0" style="color:var(--text-color);"><i class="bi bi-calendar-check"></i> {{ r.name }} — {{ routine_stats[r.name]|length }} esercizi</h5>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
+                    <table class="stats-table mb-0">
+                        <thead>
                             <tr>
                                 <th>Esercizio</th>
                                 <th class="text-center">Peso Attuale</th>
@@ -62,12 +85,12 @@
                             {% for ex in routine_stats[r.name] %}
                             <tr class="exercise-row">
                                 <td>
-                                    <span class="fw-semibold" style="color:var(--text-color);">{{ ex.name_it }}</span>
+                                    <span class="fw-semibold">{{ ex.name_it }}</span>
                                     <br><small class="text-muted">{{ ex.routine_exercise.default_sets or '-' }}x{{ ex.routine_exercise.default_reps or '-' }}</small>
                                 </td>
                                 <td class="text-center">
                                     {% if ex.latest_weight is not none %}
-                                        <span class="fw-bold" style="color:var(--text-color);">{{ ex.latest_weight }}</span> kg
+                                        <span class="fw-bold">{{ ex.latest_weight }}</span> kg
                                         <br><small class="text-muted">{{ ex.latest_date.strftime('%d/%m') if ex.latest_date else '' }}</small>
                                     {% else %}
                                         <span class="text-muted">-</span>
@@ -132,6 +155,28 @@
     </div>
 </div>
 
+<!-- Confirm Clear Modal -->
+<div class="modal fade" id="clearStatsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" style="color:var(--text-color);"><i class="bi bi-exclamation-triangle text-danger"></i> Conferma Reset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-color);">Vuoi cancellare <strong>tutti</strong> i dati delle sessioni e dei pesi?</p>
+                <p class="text-muted small mb-0">Verranno eliminate tutte le sessioni di allenamento, i workout associati e la cronologia pesi. Le routine template rimarranno intatte.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-danger" onclick="clearAllStats()">
+                    <i class="bi bi-trash"></i> Sì, cancella tutto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -149,9 +194,24 @@ function openChart(routineId, exerciseName) {
     new bootstrap.Modal(document.getElementById('chartModal')).show();
 }
 
+function getChartColors() {
+    const isDark = document.body.classList.contains('dark-mode');
+    return {
+        line: isDark ? '#818cf8' : '#4f46e5',
+        fill: isDark ? 'rgba(129,140,248,0.15)' : 'rgba(79,70,229,0.1)',
+        point: isDark ? '#818cf8' : '#4f46e5',
+        gridColor: isDark ? '#334155' : '#e2e8f0',
+        labelColor: isDark ? '#94a3b8' : '#475569',
+        tooltipBg: isDark ? '#1e293b' : '#ffffff',
+        tooltipText: isDark ? '#e2e8f0' : '#1e293b',
+        tooltipBorder: isDark ? '#334155' : '#e2e8f0',
+    };
+}
+
 function renderChart(data) {
     const ctx = document.getElementById('weightChart').getContext('2d');
     if (chart) chart.destroy();
+    const colors = getChartColors();
     const labels = data.map(d => d.date);
     const weights = data.map(d => d.weight);
     chart = new Chart(ctx, {
@@ -161,12 +221,12 @@ function renderChart(data) {
             datasets: [{
                 label: 'Peso (kg)',
                 data: weights,
-                borderColor: '#4f46e5',
-                backgroundColor: 'rgba(79,70,229,0.1)',
+                borderColor: colors.line,
+                backgroundColor: colors.fill,
                 fill: true,
                 tension: 0.3,
                 pointRadius: 5,
-                pointBackgroundColor: '#4f46e5',
+                pointBackgroundColor: colors.point,
             }]
         },
         options: {
@@ -174,12 +234,42 @@ function renderChart(data) {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' kg' } }
+                tooltip: {
+                    backgroundColor: colors.tooltipBg,
+                    titleColor: colors.tooltipText,
+                    bodyColor: colors.tooltipText,
+                    borderColor: colors.tooltipBorder,
+                    borderWidth: 1,
+                    callbacks: { label: ctx => ctx.parsed.y + ' kg' }
+                }
             },
             scales: {
-                y: { beginAtZero: false, title: { display: true, text: 'kg' } }
+                x: {
+                    ticks: { color: colors.labelColor },
+                    grid: { color: colors.gridColor }
+                },
+                y: {
+                    beginAtZero: false,
+                    title: { display: true, text: 'kg', color: colors.labelColor },
+                    ticks: { color: colors.labelColor },
+                    grid: { color: colors.gridColor }
+                }
             }
         }
+    });
+}
+
+function confirmClearStats() {
+    new bootstrap.Modal(document.getElementById('clearStatsModal')).show();
+}
+
+function clearAllStats() {
+    fetch('{{ url_for("clear_stats") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    }).then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+        else alert(data.error || 'Errore');
     });
 }
 </script>
