@@ -60,6 +60,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     profile_image = db.Column(db.Text, nullable=True)
     friend_code = db.Column(db.String(4), unique=True, nullable=True, index=True)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     routines = db.relationship('Routine', backref='user', lazy=True, cascade='all, delete-orphan')
     routine_exercises = db.relationship('RoutineExercise', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -284,6 +285,10 @@ def ensure_database():
                         u.friend_code = _generate_friend_code()
                     db.session.commit()
                     print("✓ friend_code assegnati a utenti esistenti")
+                if "is_admin" not in user_cols:
+                    db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+                    db.session.commit()
+                    print("✓ Colonna is_admin aggiunta a user")
 
             all_users = User.query.all()
             for user in all_users:
@@ -292,20 +297,26 @@ def ensure_database():
 
             db.session.commit()
 
-            default_user = User.query.filter_by(username='admin').first()
+            admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+            default_user = User.query.filter_by(username=admin_username).first()
             admin_password = os.environ.get("ADMIN_PASSWORD")
             if not admin_password and not IS_VERCEL and not os.environ.get("DATABASE_URL"):
                 admin_password = "admin123"
             if not default_user and admin_password:
                 print("→ Creando utente admin di default...")
                 admin = User(
-                    username=os.environ.get("ADMIN_USERNAME", "admin"),
-                    email=os.environ.get("ADMIN_EMAIL", "admin@example.com")
+                    username=admin_username,
+                    email=os.environ.get("ADMIN_EMAIL", "admin@example.com"),
+                    is_admin=True
                 )
                 admin.set_password(admin_password)
                 db.session.add(admin)
                 db.session.commit()
                 print("✓ Utente admin creato")
+            elif default_user and not default_user.is_admin:
+                default_user.is_admin = True
+                db.session.commit()
+                print(f"✓ Utente {admin_username} impostato come admin")
 
         except Exception as e:
             print(f"⚠ Warning in database migration: {e}")
@@ -613,6 +624,121 @@ def logout():
     logout_user()
     flash("✓ Logout completato.", "info")
     return redirect(url_for("landing"))
+
+
+# ============= ROUTES ADMIN =============
+
+@app.route("/admin")
+@login_required
+def admin_panel():
+    if not current_user.is_admin:
+        flash("✗ Accesso negato.", "danger")
+        return redirect(url_for("dashboard"))
+
+    users = User.query.order_by(User.created_at.desc()).all()
+    user_data = []
+    for u in users:
+        routines_count = Routine.query.filter_by(user_id=u.id).count()
+        sessions_count = RoutineSession.query.filter_by(user_id=u.id).count()
+        workouts_count = Workout.query.filter_by(user_id=u.id).count()
+        friendships_count = Friendship.query.filter(
+            ((Friendship.requester_id == u.id) | (Friendship.receiver_id == u.id)),
+            Friendship.status == "accepted"
+        ).count()
+        user_data.append({
+            "user": u,
+            "routines": routines_count,
+            "sessions": sessions_count,
+            "workouts": workouts_count,
+            "friends": friendships_count,
+        })
+
+    total_users = len(users)
+    total_sessions = RoutineSession.query.count()
+    total_workouts = Workout.query.count()
+    total_friendships = Friendship.query.filter_by(status="accepted").count()
+
+    return render_template("admin.html",
+                           user_data=user_data,
+                           total_users=total_users,
+                           total_sessions=total_sessions,
+                           total_workouts=total_workouts,
+                           total_friendships=total_friendships)
+
+
+@app.route("/admin/toggle-admin/<int:user_id>", methods=["POST"])
+@login_required
+def toggle_admin(user_id):
+    if not current_user.is_admin:
+        flash("✗ Accesso negato.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    if user.id == current_user.id:
+        flash("✗ Non puoi rimuovere il tuo stesso admin.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    status = "promosso ad admin" if user.is_admin else "retrocesso da admin"
+    flash(f"✓ {user.username} {status}.", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/delete-user/<int:user_id>", methods=["POST"])
+@login_required
+def admin_delete_user(user_id):
+    if not current_user.is_admin:
+        flash("✗ Accesso negato.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    if user.id == current_user.id:
+        flash("✗ Non puoi eliminare te stesso.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    uid = user.id
+    username = user.username
+    WeightHistory.query.filter_by(user_id=uid).delete()
+    Workout.query.filter_by(user_id=uid).delete()
+    RoutineSession.query.filter_by(user_id=uid).delete()
+    RoutineExercise.query.filter_by(user_id=uid).delete()
+    Routine.query.filter_by(user_id=uid).delete()
+    Friendship.query.filter(
+        (Friendship.requester_id == uid) | (Friendship.receiver_id == uid)
+    ).delete()
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"✓ Utente {username} eliminato.", "success")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/reset-password/<int:user_id>", methods=["POST"])
+@login_required
+def admin_reset_password(user_id):
+    if not current_user.is_admin:
+        flash("✗ Accesso negato.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    import string
+    new_pass = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    user.set_password(new_pass)
+    db.session.commit()
+    flash(f"✓ Password di {user.username} resettata. Nuova password: <strong>{new_pass}</strong>", "success")
+    return redirect(url_for("admin_panel"))
 
 
 @app.route("/profile", methods=["GET", "POST"])

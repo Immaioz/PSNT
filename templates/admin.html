@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - PSNT{% endblock %}
+
+{% block extra_css %}
+<style>
+    .admin-stat { text-align: center; padding: 1.2rem; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); }
+    .admin-stat .num { font-size: 2rem; font-weight: 700; color: var(--primary-color); }
+    .admin-stat .label { font-size: .8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+    .user-row { transition: background .15s; }
+    .user-row:hover td { background: var(--bg-color); }
+    .admin-table { width: 100%; border-collapse: collapse; }
+    .admin-table th {
+        padding: 0.6rem 0.75rem;
+        font-weight: 600;
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--text-muted);
+        background: var(--bg-color);
+        border-bottom: 2px solid var(--border-color);
+    }
+    .admin-table td {
+        padding: 0.65rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-color);
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('dashboard') }}" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Dashboard</a>
+        <h1 class="mt-1 mb-0" style="color:var(--text-color);"><i class="bi bi-shield-lock"></i> Admin Panel</h1>
+    </div>
+</div>
+
+<!-- Stats Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="admin-stat">
+            <div class="num">{{ total_users }}</div>
+            <div class="label">Utenti</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="admin-stat">
+            <div class="num">{{ total_sessions }}</div>
+            <div class="label">Sessioni</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="admin-stat">
+            <div class="num">{{ total_workouts }}</div>
+            <div class="label">Workouts</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="admin-stat">
+            <div class="num">{{ total_friendships }}</div>
+            <div class="label">Amicizie</div>
+        </div>
+    </div>
+</div>
+
+<!-- User Management -->
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0" style="color:var(--text-color);"><i class="bi bi-people"></i> Gestione Utenti ({{ user_data|length }})</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="admin-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Utente</th>
+                        <th class="text-center">Codice</th>
+                        <th class="text-center">Ruolo</th>
+                        <th class="text-center">Routine</th>
+                        <th class="text-center">Sessioni</th>
+                        <th class="text-center">Workouts</th>
+                        <th class="text-center">Amici</th>
+                        <th class="text-center">Iscritto</th>
+                        <th class="text-center">Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ud in user_data %}
+                    {% set u = ud.user %}
+                    <tr class="user-row">
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                {% if u.profile_image %}
+                                    <img src="{{ u.profile_image }}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">
+                                {% else %}
+                                    <div style="width:32px;height:32px;border-radius:50%;background:var(--bg-color);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:.85rem;">
+                                        <i class="bi bi-person-fill"></i>
+                                    </div>
+                                {% endif %}
+                                <div>
+                                    <span class="fw-semibold">{{ u.username }}</span>
+                                    <br><small class="text-muted">{{ u.email }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-center"><code>#{{ u.friend_code or '—' }}</code></td>
+                        <td class="text-center">
+                            {% if u.is_admin %}
+                                <span class="badge bg-primary"><i class="bi bi-shield-fill"></i> Admin</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Utente</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ ud.routines }}</td>
+                        <td class="text-center">{{ ud.sessions }}</td>
+                        <td class="text-center">{{ ud.workouts }}</td>
+                        <td class="text-center">{{ ud.friends }}</td>
+                        <td class="text-center"><small class="text-muted">{{ u.created_at.strftime('%d/%m/%Y') }}</small></td>
+                        <td class="text-center">
+                            <div class="d-flex gap-1 justify-content-center flex-wrap">
+                                {% if u.id != current_user.id %}
+                                <form method="POST" action="{{ url_for('toggle_admin', user_id=u.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm {% if u.is_admin %}btn-outline-warning{% else %}btn-outline-primary{% endif %}" title="{% if u.is_admin %}Rimuovi admin{% else %}Promuovi ad admin{% endif %}">
+                                        <i class="bi bi-shield{% if u.is_admin %}-fill{% endif %}"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                <form method="POST" action="{{ url_for('admin_reset_password', user_id=u.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Resettaggiare la password di {{ u.username }}?')" title="Reset password">
+                                        <i class="bi bi-key"></i>
+                                    </button>
+                                </form>
+                                {% if u.id != current_user.id %}
+                                <form method="POST" action="{{ url_for('admin_delete_user', user_id=u.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Eliminare {{ u.username }}? Tutti i suoi dati verranno persi.')" title="Elimina utente">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
