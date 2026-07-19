@@ -6,12 +6,12 @@
 <style>
     .routine-card { transition: transform 0.2s, box-shadow 0.2s; }
     .routine-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    .routine-name { cursor: pointer; color: #1e293b; font-weight: 700; }
-    .routine-name:hover { color: #4f46e5; }
-    .exercise-item { padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9; }
+    .routine-name { cursor: pointer; color: var(--text-color); font-weight: 700; }
+    .routine-name:hover { color: var(--primary-color); }
+    .exercise-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); }
     .exercise-item:last-child { border-bottom: none; }
-    .exercise-item .name { font-weight: 500; color: #1e293b; }
-    .exercise-item .meta { font-size: 0.8rem; color: #64748b; }
+    .exercise-item .name { font-weight: 500; color: var(--text-color); }
+    .exercise-item .meta { font-size: 0.8rem; color: var(--text-muted); }
     .btn-avvia {
         background: linear-gradient(135deg, #059669, #10b981);
         color: #fff; border: none; font-weight: 600;
@@ -23,7 +23,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="mb-1" style="color:#1e293b;"><i class="bi bi-calendar-check"></i> Le Tue Routine</h1>
+        <h1 class="mb-1" style="color:var(--text-color);"><i class="bi bi-calendar-check"></i> Le Tue Routine</h1>
         <small class="text-muted">Gestisci i tuoi template di allenamento</small>
     </div>
     <button class="btn btn-primary btn-lg" onclick="addRoutine()">
@@ -76,7 +76,7 @@
                         </p>
                     {% endif %}
                 </div>
-                <div class="card-footer bg-white d-flex gap-2 py-3">
+                <div class="card-footer d-flex gap-2 py-3">
                     <form method="POST" action="{{ url_for('start_routine', routine_id=rd.routine.id) }}" class="flex-grow-1">
                         <button type="submit" class="btn btn-avvia w-100" {% if not rd.exercises %}disabled title="Aggiungi esercizi prima"{% endif %}>
                             <i class="bi bi-play-fill"></i> Avvia Routine

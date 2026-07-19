@@ -5,40 +5,42 @@
     content: "";
     position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
     width: 16px; height: 16px;
-    border: 2px solid #ccc; border-top-color: #4f46e5;
+    border: 2px solid #ccc; border-top-color: var(--primary-color);
     border-radius: 50%; animation: ac-spin .6s linear infinite;
 }
 @keyframes ac-spin { to { transform: translateY(-50%) rotate(360deg); } }
 .exercise-ac-dropdown {
     position: absolute; z-index: 1050; left: 0; right: 0;
     max-height: 320px; overflow-y: auto;
-    background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
+    background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,.15);
     display: none; margin-top: 4px;
 }
 .exercise-ac-dropdown.show { display: block; }
 .exercise-ac-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0;
-    transition: background .15s;
+    padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color);
+    transition: background .15s; color: var(--text-color);
 }
 .exercise-ac-item:last-child { border-bottom: none; }
-.exercise-ac-item:hover, .exercise-ac-item.active { background: #eef2ff; }
-.exercise-ac-item img { width: 60px; height: 60px; border-radius: 6px; object-fit: cover; }
+.exercise-ac-item:hover, .exercise-ac-item.active { background: var(--bg-color); }
+.exercise-ac-item img { width: 72px; height: 72px; border-radius: 6px; object-fit: cover; }
 .exercise-ac-item-info { flex: 1; min-width: 0; }
-.exercise-ac-item-name { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.exercise-ac-item-meta { font-size: .75rem; color: #6c757d; }
+.exercise-ac-item-name { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-color); }
+.exercise-ac-item-meta { font-size: .75rem; color: var(--text-muted); }
 .exercise-ac-item-meta .badge { font-size: .65rem; padding: 2px 6px; }
 .exercise-ac-selected {
     display: none; align-items: center; gap: 10px;
     padding: 8px 12px; margin-top: 6px;
-    background: #eef2ff; border: 1px solid #4f46e5; border-radius: 8px;
+    background: var(--bg-color); border: 1px solid var(--primary-color); border-radius: 8px;
 }
 .exercise-ac-selected.show { display: flex; }
-.exercise-ac-selected img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.exercise-ac-selected img { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; }
 .exercise-ac-selected .flex-grow-1 { min-width: 0; }
 .exercise-ac-selected .ac-sel-name { font-weight: 600; font-size: .9rem; }
-.exercise-ac-selected .ac-sel-meta { font-size: .75rem; color: #6c757d; }
+.exercise-ac-selected .ac-sel-name a { color: var(--primary-color); text-decoration: none; }
+.exercise-ac-selected .ac-sel-name a:hover { text-decoration: underline; }
+.exercise-ac-selected .ac-sel-meta { font-size: .75rem; color: var(--text-muted); }
 .exercise-ac-selected .btn-close { font-size: .7rem; }
 </style>
 
@@ -48,7 +50,7 @@
 <div class="exercise-ac-selected" id="exerciseSelectedPreview">
     <img id="acPreviewImg" src="" alt="">
     <div class="flex-grow-1">
-        <div class="ac-sel-name" id="acPreviewName"></div>
+        <div class="ac-sel-name"><a id="acPreviewLink" href="#" target="_blank"><span id="acPreviewName"></span></a></div>
         <div class="ac-sel-meta" id="acPreviewMeta"></div>
     </div>
     <button type="button" class="btn-close" id="acClearSelection" aria-label="Rimuovi"></button>
@@ -62,6 +64,7 @@
     const preview = document.getElementById('exerciseSelectedPreview');
     const previewImg = document.getElementById('acPreviewImg');
     const previewName = document.getElementById('acPreviewName');
+    const previewLink = document.getElementById('acPreviewLink');
     const previewMeta = document.getElementById('acPreviewMeta');
     const clearBtn = document.getElementById('acClearSelection');
 
@@ -85,6 +88,11 @@
         const nameIt = ex.name_it || ex.name;
         const nameEn = ex.name;
         previewName.textContent = nameIt !== nameEn ? nameIt + ' (' + nameEn + ')' : nameIt;
+        if (ex.id) {
+            previewLink.href = '/exercise/' + ex.id;
+        } else {
+            previewLink.href = '#';
+        }
         let meta = ex.body_part_it || ex.body_part || '';
         if (ex.target_it || ex.target) meta += (meta ? ' · ' : '') + (ex.target_it || ex.target);
         if (ex.equipment_it || ex.equipment) meta += (meta ? ' · ' : '') + (ex.equipment_it || ex.equipment);
