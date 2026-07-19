@@ -2,6 +2,26 @@
 
 {% block title %}Routine di {{ target.username }} - PSNT{% endblock %}
 
+{% block extra_css %}
+<style>
+    .routine-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .routine-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .routine-name { cursor: pointer; color: var(--text-color); font-weight: 700; }
+    .routine-name:hover { color: var(--primary-color); }
+    .routine-name .bi { transition: transform .2s; font-size: .8rem; }
+    .routine-name.collapsed .bi-chevron-down { transform: rotate(-90deg); }
+    .exercise-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); }
+    .exercise-item:last-child { border-bottom: none; }
+    .exercise-item .name { font-weight: 500; color: var(--text-color); }
+    .exercise-item .meta { font-size: 0.8rem; color: var(--text-muted); }
+    .btn-visualizza {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff; border: none; font-weight: 600;
+    }
+    .btn-visualizza:hover { background: linear-gradient(135deg, #4338ca, #6d28d9); color: #fff; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -20,17 +40,19 @@
 <div class="row g-4">
     {% for rd in routine_data %}
         <div class="col-md-6 col-lg-4">
-            <div class="card h-100">
+            <div class="card h-100 routine-card">
                 <div class="card-header d-flex justify-content-between align-items-center py-3">
-                    <span class="fw-bold" style="color:var(--text-color);">{{ rd.routine.name }}</span>
+                    <span class="routine-name collapsed" data-bs-toggle="collapse" data-bs-target="#exercises-{{ rd.routine.id }}" role="button" aria-expanded="false">
+                        <i class="bi bi-chevron-down"></i> {{ rd.routine.name }}
+                    </span>
                     <span class="badge bg-secondary">{{ rd.exercises|length }} esercizi</span>
                 </div>
-                <div class="card-body">
+                <div class="card-body collapse" id="exercises-{{ rd.routine.id }}">
                     {% if rd.exercises %}
                         {% for ex in rd.exercises %}
                         <div class="exercise-item">
-                            <div class="name" style="font-weight:500;color:var(--text-color);">{{ ex.exercise }}</div>
-                            <div class="meta" style="font-size:.8rem;color:var(--text-muted);">
+                            <div class="name">{{ ex.exercise }}</div>
+                            <div class="meta">
                                 {% if ex.default_sets %}{{ ex.default_sets }}x{% endif %}{% if ex.default_reps %}{{ ex.default_reps }}{% endif %}
                                 {% if not ex.default_sets and not ex.default_reps %}Sets/reps non impostati{% endif %}
                             </div>
@@ -41,20 +63,15 @@
                     {% endif %}
                 </div>
                 {% if rd.exercises %}
-                <div class="card-footer d-flex justify-content-between align-items-center py-3">
-                    <small class="text-muted">
-                        {% if rd.session_count > 0 %}{{ rd.session_count }} sessioni{% endif %}
-                    </small>
-                    <div class="d-flex gap-2">
-                        <a href="{{ url_for('friend_routine_detail', user_id=target.id, routine_id=rd.routine.id) }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-eye"></i> Visualizza
-                        </a>
-                        <form method="POST" action="{{ url_for('import_routine', user_id=target.id, routine_id=rd.routine.id) }}">
-                            <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Importare la routine {{ rd.routine.name }} nel tuo account?')">
-                                <i class="bi bi-download"></i> Importa
-                            </button>
-                        </form>
-                    </div>
+                <div class="card-footer d-flex gap-2 py-3">
+                    <a href="{{ url_for('friend_routine_detail', user_id=target.id, token=rd.routine.public_token) }}" class="btn btn-visualizza flex-grow-1">
+                        <i class="bi bi-eye"></i> Visualizza
+                    </a>
+                    <form method="POST" action="{{ url_for('import_routine', user_id=target.id, token=rd.routine.public_token) }}" class="flex-grow-1">
+                        <button type="submit" class="btn btn-success w-100" onclick="return confirm('Importare la routine {{ rd.routine.name }} nel tuo account?')">
+                            <i class="bi bi-download"></i> Importa
+                        </button>
+                    </form>
                 </div>
                 {% endif %}
             </div>

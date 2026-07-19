@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 import os
 import random
+import uuid
 from sqlalchemy import inspect, text, func
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -83,6 +84,7 @@ class Routine(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name = db.Column(db.String(50), nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)
+    public_token = db.Column(db.String(36), unique=True, nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     exercises = db.relationship('RoutineExercise', backref='routine', lazy=True, cascade='all, delete-orphan',
                                 order_by='RoutineExercise.position.asc()')
@@ -168,6 +170,13 @@ def _generate_friend_code():
         code = f"{random.randint(1000, 9999)}"
         if not User.query.filter_by(friend_code=code).first():
             return code
+
+
+def _generate_public_token():
+    while True:
+        token = str(uuid.uuid4())
+        if not Routine.query.filter_by(public_token=token).first():
+            return token
 
 
 def log_weight(workout, weight_str):
@@ -271,6 +280,17 @@ def ensure_database():
             else:
                 print("✓ Nuovo database, nessuna migrazione necessaria")
 
+            if 'routine' in existing_tables:
+                routine_cols = [c["name"] for c in inspector.get_columns('routine')]
+                if "public_token" not in routine_cols:
+                    db.session.execute(text("ALTER TABLE routine ADD COLUMN public_token VARCHAR(36)"))
+                    db.session.commit()
+                    print("✓ Colonna public_token aggiunta a routine")
+                    for r in Routine.query.filter_by(public_token=None).all():
+                        r.public_token = _generate_public_token()
+                    db.session.commit()
+                    print("✓ public_token generati per routine esistenti")
+
             if 'user' in existing_tables:
                 user_cols = [c["name"] for c in inspector.get_columns('user')]
                 if "profile_image" not in user_cols:
@@ -346,7 +366,7 @@ def _migrate_old_workouts(cols):
         routine_pos = Routine.query.filter_by(user_id=user_id).count() + 1
 
         for day_name, day_rows in sorted(day_map.items()):
-            routine = Routine(user_id=user_id, name=day_name, position=routine_pos)
+            routine = Routine(user_id=user_id, name=day_name, position=routine_pos, public_token=_generate_public_token())
             db.session.add(routine)
             db.session.flush()
             routine_pos += 1
@@ -1098,9 +1118,9 @@ def friend_routines(user_id):
     return render_template("friend_routines.html", target=target, routine_data=routine_data)
 
 
-@app.route("/friend-routine/<int:user_id>/<int:routine_id>")
+@app.route("/friend-routine/<int:user_id>/<token>")
 @login_required
-def friend_routine_detail(user_id, routine_id):
+def friend_routine_detail(user_id, token):
     target = db.session.get(User, user_id)
     if not target:
         flash("✗ Utente non trovato.", "danger")
@@ -1116,8 +1136,8 @@ def friend_routine_detail(user_id, routine_id):
         flash("✗ Puoi vedere le routine solo degli amici accettati.", "danger")
         return redirect(url_for("friends_list"))
 
-    routine = db.session.get(Routine, routine_id)
-    if not routine or routine.user_id != target.id:
+    routine = Routine.query.filter_by(public_token=token, user_id=target.id).first()
+    if not routine:
         flash("✗ Routine non trovata.", "danger")
         return redirect(url_for("friend_routines", user_id=target.id))
 
@@ -1128,9 +1148,9 @@ def friend_routine_detail(user_id, routine_id):
     return render_template("friend_routine_detail.html", routine=routine, exercises=exercises, target=target)
 
 
-@app.route("/import-routine/<int:user_id>/<int:routine_id>", methods=["POST"])
+@app.route("/import-routine/<int:user_id>/<token>", methods=["POST"])
 @login_required
-def import_routine(user_id, routine_id):
+def import_routine(user_id, token):
     target = db.session.get(User, user_id)
     if not target:
         flash("✗ Utente non trovato.", "danger")
@@ -1146,18 +1166,19 @@ def import_routine(user_id, routine_id):
         flash("✗ Non hai accesso.", "danger")
         return redirect(url_for("friends_list"))
 
-    source_routine = db.session.get(Routine, routine_id)
-    if not source_routine or source_routine.user_id != target.id:
+    source_routine = Routine.query.filter_by(public_token=token, user_id=target.id).first()
+    if not source_routine:
         flash("✗ Routine non valida.", "danger")
         return redirect(url_for("friend_routines", user_id=user_id))
 
-    source_exercises = RoutineExercise.query.filter_by(routine_id=routine_id).order_by(RoutineExercise.position.asc()).all()
+    source_exercises = RoutineExercise.query.filter_by(routine_id=source_routine.id).order_by(RoutineExercise.position.asc()).all()
 
     my_position = Routine.query.filter_by(user_id=current_user.id).count() + 1
     new_routine = Routine(
         user_id=current_user.id,
         name=f"{source_routine.name} (da {target.username})",
         position=my_position,
+        public_token=_generate_public_token(),
     )
     db.session.add(new_routine)
     db.session.flush()
@@ -1226,7 +1247,7 @@ def add_routine():
         max_pos = db.session.query(func.max(Routine.position)).filter(
             Routine.user_id == current_user.id
         ).scalar()
-        routine = Routine(user_id=current_user.id, name=name, position=(max_pos or 0) + 1)
+        routine = Routine(user_id=current_user.id, name=name, position=(max_pos or 0) + 1, public_token=_generate_public_token())
         db.session.add(routine)
         db.session.commit()
         return jsonify({"id": routine.id, "name": routine.name, "position": routine.position}), 201

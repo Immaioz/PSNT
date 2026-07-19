@@ -45,7 +45,7 @@
         <a href="{{ url_for('friend_stats', user_id=target.id) }}" class="btn btn-sm btn-outline-primary" title="Stats">
             <i class="bi bi-graph-up"></i> Stats
         </a>
-        <form method="POST" action="{{ url_for('import_routine', user_id=target.id, routine_id=routine.id) }}">
+        <form method="POST" action="{{ url_for('import_routine', user_id=target.id, token=routine.public_token) }}">
             <button type="submit" class="btn btn-success" onclick="return confirm('Importare la routine {{ routine.name }} nel tuo account?')">
                 <i class="bi bi-download"></i> Importa
             </button>
