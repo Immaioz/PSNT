@@ -254,101 +254,95 @@ def ensure_database():
 
 
 def _migrate_old_workouts(cols):
-    all_users = User.query.all()
+    rows = db.session.execute(text(
+        "SELECT id, user_id, exercise, exercise_id, sets, reps, weight, notes, day, date "
+        "FROM workout WHERE day IS NOT NULL ORDER BY user_id, day, date"
+    )).fetchall()
 
-    for user in all_users:
-        has_workouts_with_day = db.session.query(Workout.day).filter(
-            Workout.user_id == user.id, Workout.day.isnot(None)
-        ).first()
-        if not has_workouts_with_day:
-            continue
+    if not rows:
+        print("  ✓ Nessun vecchio workout da migrare")
+        return
 
-        has_sessions = RoutineSession.query.filter_by(user_id=user.id).first()
+    from collections import defaultdict
+    user_day_map = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        user_day_map[r.user_id][r.day].append(r)
+
+    for user_id, day_map in user_day_map.items():
+        has_sessions = RoutineSession.query.filter_by(user_id=user_id).first()
         if has_sessions:
             continue
 
-        old_workouts = Workout.query.filter(
-            Workout.user_id == user.id, Workout.day.isnot(None)
-        ).all()
+        routine_pos = Routine.query.filter_by(user_id=user_id).count() + 1
 
-        if not old_workouts:
-            continue
-
-        day_map = {}
-        for wo in old_workouts:
-            if wo.day not in day_map:
-                day_map[wo.day] = []
-            day_map[wo.day].append(wo)
-
-        for day_name, workouts in sorted(day_map.items()):
-            routine = Routine(user_id=user.id, name=day_name, position=len(Routine.query.filter_by(user_id=user.id).all()) + 1)
+        for day_name, day_rows in sorted(day_map.items()):
+            routine = Routine(user_id=user_id, name=day_name, position=routine_pos)
             db.session.add(routine)
             db.session.flush()
+            routine_pos += 1
 
             seen_exercises = {}
-            for wo in workouts:
-                ex_key = wo.exercise
-                if ex_key not in seen_exercises:
-                    seen_exercises[ex_key] = wo
+            for r in day_rows:
+                if r.exercise not in seen_exercises:
+                    seen_exercises[r.exercise] = r
 
-            for pos, (ex_name, wo) in enumerate(seen_exercises.items(), 1):
+            for pos, (ex_name, r) in enumerate(seen_exercises.items(), 1):
                 re = RoutineExercise(
                     routine_id=routine.id,
-                    user_id=user.id,
-                    exercise=wo.exercise,
-                    exercise_id=wo.exercise_id,
-                    default_sets=wo.sets,
-                    default_reps=wo.reps,
-                    notes=wo.notes,
+                    user_id=user_id,
+                    exercise=r.exercise,
+                    exercise_id=r.exercise_id,
+                    default_sets=r.sets,
+                    default_reps=r.reps,
+                    notes=r.notes,
                     position=pos,
                 )
                 db.session.add(re)
 
-            date_groups = {}
-            for wo in workouts:
-                d = wo.date
-                if d not in date_groups:
-                    date_groups[d] = []
-                date_groups[d].append(wo)
+            date_groups = defaultdict(list)
+            for r in day_rows:
+                date_groups[r.date].append(r)
 
-            for session_date, session_workouts in sorted(date_groups.items()):
+            for session_date, session_rows in sorted(date_groups.items()):
                 session = RoutineSession(
                     routine_id=routine.id,
-                    user_id=user.id,
+                    user_id=user_id,
                     date=session_date,
                 )
                 db.session.add(session)
                 db.session.flush()
 
-                exercises_seen = {}
-                for wo in session_workouts:
-                    if wo.exercise not in exercises_seen:
-                        exercises_seen[wo.exercise] = wo
+                seen = {}
+                for r in session_rows:
+                    if r.exercise not in seen:
+                        seen[r.exercise] = r
 
-                for s_pos, (ex_name, wo) in enumerate(exercises_seen.items(), 1):
-                    wo.session_id = session.id
-                    wo.position = s_pos
-                    wo.exercise_id = wo.exercise_id
+                for s_pos, (ex_name, r) in enumerate(seen.items(), 1):
+                    db.session.execute(text(
+                        "UPDATE workout SET session_id = :sid, position = :pos WHERE id = :wid"
+                    ), {"sid": session.id, "pos": s_pos, "wid": r.id})
 
         db.session.commit()
-        print(f"  ✓ Migrazione completata per {user.username}")
+        print(f"  ✓ Migrazione completata per user {user_id}")
 
-        from sqlalchemy import inspect as _insp
-        _inspector = _insp(db.engine)
-        _cols = [c["name"] for c in _inspector.get_columns('workout')]
-        if "day" in _cols:
-            try:
-                if db.engine.dialect.name == "postgresql":
-                    db.session.execute(text("ALTER TABLE workout DROP COLUMN day"))
-                elif db.engine.dialect.name == "sqlite":
-                    db.session.execute(text("CREATE TABLE workout_new AS SELECT id, user_id, session_id, exercise, exercise_id, sets, reps, weight, notes, position, created_at FROM workout"))
-                    db.session.execute(text("DROP TABLE workout"))
-                    db.session.execute(text("ALTER TABLE workout_new RENAME TO workout"))
-                db.session.commit()
-                print("  ✓ Colonna day rimossa")
-            except Exception:
-                db.session.rollback()
-                print("  ⚠ Impossibile rimuovere colonna day (non critico)")
+    try:
+        if db.engine.dialect.name == "postgresql":
+            db.session.execute(text("ALTER TABLE workout DROP COLUMN day"))
+            db.session.commit()
+            print("  ✓ Colonna day rimossa")
+        elif db.engine.dialect.name == "sqlite":
+            db.session.execute(text(
+                "CREATE TABLE workout_new AS "
+                "SELECT id, user_id, session_id, exercise, exercise_id, sets, reps, weight, notes, position, created_at "
+                "FROM workout"
+            ))
+            db.session.execute(text("DROP TABLE workout"))
+            db.session.execute(text("ALTER TABLE workout_new RENAME TO workout"))
+            db.session.commit()
+            print("  ✓ Colonna day rimossa (SQLite rebuild)")
+    except Exception:
+        db.session.rollback()
+        print("  ⚠ Impossibile rimuovere colonna day (non critico)")
 
 
 def _create_default_routines(user):
@@ -417,7 +411,12 @@ def search_exercises():
     results = EXERCISES_DATA
 
     if q:
-        results = [e for e in results if q in e["name"].lower() or q in get_exercise_name_it(e).lower()]
+        if q.startswith("*"):
+            bp_query = q[1:].strip()
+            if bp_query:
+                results = [e for e in results if bp_query in e.get("body_part", "").lower() or bp_query in get_body_part_it(e.get("body_part", "")).lower()]
+        else:
+            results = [e for e in results if q in e["name"].lower() or q in get_exercise_name_it(e).lower()]
     if body_part:
         results = [e for e in results if e.get("body_part", "").lower() == body_part]
     if equipment:
@@ -453,6 +452,25 @@ def get_exercise_detail(exercise_id):
     if result.get("gif_url"):
         result["gif_url"] = url_for("static", filename="exercises/" + result["gif_url"])
     return jsonify(result)
+
+
+@app.route("/exercise/<exercise_id>")
+@login_required
+def exercise_dataset_detail(exercise_id):
+    ex = EXERCISES_BY_ID.get(exercise_id)
+    if not ex:
+        flash("Esercizio non trovato.", "danger")
+        return redirect(url_for("dashboard"))
+    detail = dict(ex)
+    detail["name_it"] = get_exercise_name_it(ex)
+    detail["body_part_it"] = get_body_part_it(ex.get("body_part", ""))
+    detail["target_it"] = get_target_it(ex.get("target", ""))
+    detail["equipment_it"] = get_equipment_it(ex.get("equipment", ""))
+    if detail.get("image"):
+        detail["image"] = url_for("static", filename="exercises/" + detail["image"])
+    if detail.get("gif_url"):
+        detail["gif_url"] = url_for("static", filename="exercises/" + detail["gif_url"])
+    return render_template("exercise_detail.html", exercise=detail)
 
 
 # ============= ERROR HANDLERS =============
@@ -919,6 +937,10 @@ def view_workout(workout_id):
             exercise_detail["body_part_it"] = get_body_part_it(ex.get("body_part", ""))
             exercise_detail["target_it"] = get_target_it(ex.get("target", ""))
             exercise_detail["equipment_it"] = get_equipment_it(ex.get("equipment", ""))
+            if exercise_detail.get("image"):
+                exercise_detail["image"] = url_for("static", filename="exercises/" + exercise_detail["image"])
+            if exercise_detail.get("gif_url"):
+                exercise_detail["gif_url"] = url_for("static", filename="exercises/" + exercise_detail["gif_url"])
 
     session = RoutineSession.query.get(w.session_id) if w.session_id else None
     return render_template("view_workout.html", w=w, exercise_detail=exercise_detail, session=session)

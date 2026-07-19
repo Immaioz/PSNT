@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Gestisci {{ routine.name }} - Workout Tracker{% endblock %}
+{% block title %}Gestisci {{ routine.name }} - PSNT{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -32,7 +32,11 @@
         <div class="exercise-row px-3 d-flex justify-content-between align-items-center">
             <div class="flex-grow-1">
                 <div class="name">
-                    {{ ex.exercise }}
+                    {% if ex.exercise_id %}
+                        <a href="{{ url_for('exercise_dataset_detail', exercise_id=ex.exercise_id) }}" class="text-decoration-none" style="color:#1e293b;">{{ ex.exercise }}</a>
+                    {% else %}
+                        {{ ex.exercise }}
+                    {% endif %}
                     {% if ex.exercise_id %} <span class="badge bg-success" style="font-size:.55rem;"><i class="bi bi-book"></i></span>{% endif %}
                 </div>
                 <div class="meta">
@@ -70,7 +74,7 @@
         <form method="POST" action="{{ url_for('add_routine_exercise', routine_id=routine.id) }}" novalidate>
             <div class="mb-3">
                 <label for="exercise" class="form-label fw-semibold">Esercizio *</label>
-                <input type="text" class="form-control" id="exercise" name="exercise" placeholder="Cerca o scrivi un esercizio..." autocomplete="off" required>
+                <input type="text" class="form-control" id="exercise" name="exercise" placeholder="Cerca, o *petto per gruppo muscolare..." autocomplete="off" required>
                 <input type="hidden" id="exercise_id" name="exercise_id" value="">
             </div>
 

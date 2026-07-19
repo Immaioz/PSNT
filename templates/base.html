@@ -3,23 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Workout Tracker{% endblock %}</title>
+    <title>{% block title %}PSNT{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         :root {
             --primary-color: #4f46e5;
             --accent-color: #7c3aed;
+            --bg-color: #f1f5f9;
+            --surface-color: #ffffff;
+            --border-color: #e2e8f0;
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --text-secondary: #475569;
+        }
+        body.dark-mode {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --border-color: #334155;
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+            --text-secondary: #cbd5e1;
+            background: #0f172a;
+            color: #e2e8f0;
         }
         body {
-            background: #f1f5f9;
+            background: var(--bg-color);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            color: #1e293b;
+            color: var(--text-color);
         }
         .navbar {
-            background: #ffffff;
+            background: var(--surface-color);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
         }
         .navbar-brand {
@@ -32,19 +48,21 @@
             padding: 1.5rem 0;
         }
         .container-main {
-            background: #ffffff;
+            background: var(--surface-color);
             border-radius: 12px;
             padding: 1.5rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
         }
         .card {
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--border-color);
             border-radius: 12px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            background: var(--surface-color);
+            color: var(--text-color);
         }
         .card-header {
-            background: #ffffff;
-            border-bottom: 1px solid #e2e8f0;
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
             font-weight: 600;
         }
         .btn-primary {
@@ -62,12 +80,12 @@
             background: #047857;
         }
         .footer {
-            background: #ffffff;
+            background: var(--surface-color);
             padding: 1.5rem 0;
             margin-top: auto;
-            border-top: 1px solid #e2e8f0;
+            border-top: 1px solid var(--border-color);
             text-align: center;
-            color: #64748b;
+            color: var(--text-muted);
             font-size: 0.85rem;
         }
         .badge-purple {
@@ -79,7 +97,61 @@
             color: #fff;
         }
         .text-dark-readable {
-            color: #1e293b;
+            color: var(--text-color);
+        }
+        body.dark-mode .text-dark-readable {
+            color: var(--text-color);
+        }
+        body.dark-mode .form-control {
+            background: #0f172a;
+            border-color: #334155;
+            color: #e2e8f0;
+        }
+        body.dark-mode .form-control:focus {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+        body.dark-mode .alert-secondary {
+            background: #1e293b;
+            border-color: #334155;
+            color: #e2e8f0;
+        }
+        body.dark-mode .bg-light {
+            background: #0f172a !important;
+        }
+        body.dark-mode .exercise-ac-dropdown {
+            background: #1e293b;
+            border-color: #334155;
+        }
+        body.dark-mode .exercise-ac-item {
+            border-bottom-color: #334155;
+        }
+        body.dark-mode .exercise-ac-item:hover,
+        body.dark-mode .exercise-ac-item.active {
+            background: #334155;
+        }
+        body.dark-mode .exercise-ac-item-meta { color: #94a3b8; }
+        body.dark-mode .modal-content {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+        body.dark-mode .modal-header { border-bottom-color: #334155; }
+        body.dark-mode .modal-footer { border-top-color: #334155; }
+        body.dark-mode .badge.bg-light { background: #334155 !important; color: #e2e8f0 !important; }
+        body.dark-mode .info-label { color: #94a3b8; }
+        body.dark-mode .exercise-ac-item-meta .badge.bg-light { background: #334155 !important; color: #e2e8f0 !important; }
+        .dark-toggle {
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 6px 10px;
+            border-radius: 8px;
+            transition: background .2s;
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+        .dark-toggle:hover {
+            background: var(--border-color);
         }
     </style>
     {% block extra_css %}{% endblock %}
@@ -88,7 +160,7 @@
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% if current_user.is_authenticated %}{{ url_for('dashboard') }}{% else %}{{ url_for('landing') }}{% endif %}">
-                <i class="bi bi-dumbbell"></i> Workout Tracker
+                <i class="bi bi-dumbbell"></i> PSNT
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -96,6 +168,11 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     {% if current_user.is_authenticated %}
+                        <li class="nav-item">
+                            <button class="dark-toggle nav-link" id="darkToggle" title="Modalit notturna">
+                                <i class="bi bi-moon-stars"></i>
+                            </button>
+                        </li>
                         <li class="nav-item">
                             <span class="nav-link text-dark-readable">
                                 <i class="bi bi-person-circle"></i> {{ current_user.username }}
@@ -117,6 +194,11 @@
                             </a>
                         </li>
                     {% else %}
+                        <li class="nav-item">
+                            <button class="dark-toggle nav-link" id="darkToggle" title="Modalit notturna">
+                                <i class="bi bi-moon-stars"></i>
+                            </button>
+                        </li>
                         <li class="nav-item">
                             <a class="nav-link text-dark-readable" href="{{ url_for('login') }}">
                                 <i class="bi bi-box-arrow-in-right"></i> Login
@@ -154,10 +236,33 @@
 
     <footer class="footer">
         <div class="container">
-            <p>&copy; 2026 Workout Tracker</p>
+            <p>&copy; 2026 PSNT</p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+        const toggle = document.getElementById('darkToggle');
+        const body = document.body;
+        const icon = toggle.querySelector('i');
+        function applyMode(dark) {
+            if (dark) {
+                body.classList.add('dark-mode');
+                icon.className = 'bi bi-sun';
+            } else {
+                body.classList.remove('dark-mode');
+                icon.className = 'bi bi-moon-stars';
+            }
+        }
+        const saved = localStorage.getItem('darkMode');
+        if (saved === 'true') applyMode(true);
+        toggle.addEventListener('click', function() {
+            const isDark = body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', isDark);
+            icon.className = isDark ? 'bi bi-sun' : 'bi bi-moon-stars';
+        });
+    })();
+    </script>
 </body>
 </html>
