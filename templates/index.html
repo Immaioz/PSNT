@@ -48,7 +48,7 @@
         <div class="col-md-6 col-lg-4">
             <div class="card h-100 routine-card">
                 <div class="card-header d-flex justify-content-between align-items-center py-3">
-                    <span class="routine-name" data-bs-toggle="collapse" data-bs-target="#exercises-{{ rd.routine.id }}" role="button" aria-expanded="true">
+                    <span class="routine-name collapsed" data-bs-toggle="collapse" data-bs-target="#exercises-{{ rd.routine.id }}" role="button" aria-expanded="false">
                         <i class="bi bi-chevron-down"></i> {{ rd.routine.name }}
                     </span>
                     <div class="d-flex gap-1">
@@ -60,7 +60,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body collapse show" id="exercises-{{ rd.routine.id }}">
+                <div class="card-body collapse" id="exercises-{{ rd.routine.id }}">
                     {% if rd.exercises %}
                         {% for ex in rd.exercises %}
                         <div class="exercise-item">
