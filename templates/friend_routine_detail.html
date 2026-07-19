@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}{{ routine.name }} - {{ target.username }} - PSNT{% endblock %}
+
+{% block extra_css %}
+<style>
+    .exercise-row { padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); }
+    .exercise-row:last-child { border-bottom: none; }
+    .exercise-row .name { font-weight: 600; color: var(--text-color); }
+    .exercise-row .meta { font-size: 0.8rem; color: var(--text-muted); }
+    .superset-group {
+        border: 2px solid #7c3aed;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    .superset-header {
+        background: #7c3aed;
+        color: #fff;
+        font-size: .75rem;
+        font-weight: 600;
+        padding: 4px 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .superset-group .exercise-row {
+        border-bottom: 1px solid #c4b5fd;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    .superset-group .exercise-row:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('friend_routines', user_id=target.id) }}" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Routine di {{ target.username }}</a>
+        <h1 class="mt-1 mb-0" style="color:var(--text-color);"><i class="bi bi-calendar-check"></i> {{ routine.name }}</h1>
+        <small class="text-muted">Template di {{ target.username }} &middot; {{ exercises|length }} esercizi</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('friend_stats', user_id=target.id) }}" class="btn btn-sm btn-outline-primary" title="Stats">
+            <i class="bi bi-graph-up"></i> Stats
+        </a>
+        <form method="POST" action="{{ url_for('import_routine', user_id=target.id, routine_id=routine.id) }}">
+            <button type="submit" class="btn btn-success" onclick="return confirm('Importare la routine {{ routine.name }} nel tuo account?')">
+                <i class="bi bi-download"></i> Importa
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if exercises %}
+<div class="card mb-4">
+    <div class="card-body p-0">
+        {% set ns = namespace(last_superset=None) %}
+        {% for ex in exercises %}
+            {% if ex.superset_id and ex.superset_id != ns.last_superset %}
+                {% set ns.last_superset = ex.superset_id %}
+                <div class="superset-group" data-superset-id="{{ ex.superset_id }}">
+                    <div class="superset-header">
+                        <i class="bi bi-link-45deg"></i> SUPERSET
+                    </div>
+            {% endif %}
+
+            <div class="exercise-row px-3 d-flex justify-content-between align-items-center">
+                <div class="flex-grow-1">
+                    <div class="name">
+                        {% if ex.exercise_id %}
+                            <a href="{{ url_for('exercise_dataset_detail', exercise_id=ex.exercise_id) }}" class="text-decoration-none" style="color:var(--text-color);">{{ ex.exercise }}</a>
+                        {% else %}
+                            {{ ex.exercise }}
+                        {% endif %}
+                        {% if ex.exercise_id %} <span class="badge bg-success" style="font-size:.55rem;"><i class="bi bi-book"></i></span>{% endif %}
+                    </div>
+                    <div class="meta">
+                        {% if ex.default_sets %}Set: {{ ex.default_sets }}{% endif %}
+                        {% if ex.default_reps %} | Reps: {{ ex.default_reps }}{% endif %}
+                        {% if ex.notes %} | {{ ex.notes }}{% endif %}
+                        {% if not ex.default_sets and not ex.default_reps %}Nessun default impostato{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% if ex.superset_id %}
+                {% set next_ex = exercises[loop.index] if loop.index < exercises|length else None %}
+                {% if not next_ex or next_ex.superset_id != ex.superset_id %}
+                    </div>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="alert alert-secondary mb-4">
+    <i class="bi bi-info-circle"></i> Nessun esercizio in questa routine.
+</div>
+{% endif %}
+{% endblock %}

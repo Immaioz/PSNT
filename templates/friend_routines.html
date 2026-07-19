@@ -45,11 +45,16 @@
                     <small class="text-muted">
                         {% if rd.session_count > 0 %}{{ rd.session_count }} sessioni{% endif %}
                     </small>
-                    <form method="POST" action="{{ url_for('import_routine', user_id=target.id, routine_id=rd.routine.id) }}">
-                        <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Importare la routine {{ rd.routine.name }} nel tuo account?')">
-                            <i class="bi bi-download"></i> Importa
-                        </button>
-                    </form>
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('friend_routine_detail', user_id=target.id, routine_id=rd.routine.id) }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-eye"></i> Visualizza
+                        </a>
+                        <form method="POST" action="{{ url_for('import_routine', user_id=target.id, routine_id=rd.routine.id) }}">
+                            <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Importare la routine {{ rd.routine.name }} nel tuo account?')">
+                                <i class="bi bi-download"></i> Importa
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 {% endif %}
             </div>

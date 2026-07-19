@@ -1098,6 +1098,36 @@ def friend_routines(user_id):
     return render_template("friend_routines.html", target=target, routine_data=routine_data)
 
 
+@app.route("/friend-routine/<int:user_id>/<int:routine_id>")
+@login_required
+def friend_routine_detail(user_id, routine_id):
+    target = db.session.get(User, user_id)
+    if not target:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("friends_list"))
+
+    f = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
+        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).first()
+
+    if not f:
+        flash("✗ Puoi vedere le routine solo degli amici accettati.", "danger")
+        return redirect(url_for("friends_list"))
+
+    routine = db.session.get(Routine, routine_id)
+    if not routine or routine.user_id != target.id:
+        flash("✗ Routine non trovata.", "danger")
+        return redirect(url_for("friend_routines", user_id=target.id))
+
+    exercises = RoutineExercise.query.filter_by(routine_id=routine.id).order_by(
+        func.coalesce(RoutineExercise.position, 9999).asc(), RoutineExercise.position.asc()
+    ).all()
+
+    return render_template("friend_routine_detail.html", routine=routine, exercises=exercises, target=target)
+
+
 @app.route("/import-routine/<int:user_id>/<int:routine_id>", methods=["POST"])
 @login_required
 def import_routine(user_id, routine_id):
