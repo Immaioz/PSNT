@@ -266,11 +266,12 @@ function confirmClearStats() {
 function clearAllStats() {
     fetch('{{ url_for("clear_stats") }}', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'}
     }).then(r => r.json()).then(data => {
         if (data.success) location.reload();
         else alert(data.error || 'Errore');
-    });
+    }).catch(e => alert('Errore di rete: ' + e));
 }
 </script>
 {% endblock %}

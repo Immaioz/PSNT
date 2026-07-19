@@ -10,6 +10,40 @@
     .sets-reps-ctrl input { width: 55px; text-align: center; font-size: .85rem; }
     .workout-row { padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); }
     .workout-row:last-child { border-bottom: none; }
+    .superset-group {
+        border: 2px solid #7c3aed;
+        border-radius: 10px;
+        margin: 0.5rem;
+        background: var(--surface-color);
+    }
+    .superset-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: #7c3aed;
+        color: #fff;
+        font-size: .7rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        border-radius: 8px 8px 0 0;
+    }
+    .superset-exercises { padding: 0; }
+    .superset-shared {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px dashed #7c3aed;
+        background: rgba(124, 58, 237, 0.05);
+    }
+    body.dark-mode .superset-shared { background: rgba(124, 58, 237, 0.12); }
+    .superset-shared label {
+        font-size: .75rem;
+        color: var(--text-muted);
+        margin: 0;
+        white-space: nowrap;
+    }
 </style>
 {% endblock %}
 
@@ -34,8 +68,68 @@
 {% if workout_data %}
 <div class="card shadow-sm">
     <div class="card-body p-0">
+        {% set ns = namespace(rendered_supersets=[]) %}
         {% for wd in workout_data %}
         {% set w = wd.workout %}
+
+        {% if w.superset_id and w.superset_id not in ns.rendered_supersets %}
+            {% set ns.rendered_supersets = ns.rendered_supersets + [w.superset_id] %}
+            {% set group = superset_groups.get(w.superset_id, []) %}
+            {% set first_w = group[0].workout if group else w %}
+
+            <div class="superset-group">
+                <div class="superset-header">
+                    <i class="bi bi-link-45deg"></i> SUPERSET
+                </div>
+
+                <div class="superset-shared">
+                    <form method="POST" action="{{ url_for('update_superset_group', session_id=session.id, superset_id=w.superset_id) }}" class="d-flex align-items-center gap-2 flex-wrap">
+                        <label>Set x Reps:</label>
+                        <div class="sets-reps-ctrl d-flex gap-1">
+                            <input type="number" name="sets" value="{{ first_w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
+                            <span class="text-muted">x</span>
+                            <input type="text" name="reps" value="{{ first_w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Salva Set/Reps">
+                            <i class="bi bi-check-lg"></i> Salva
+                        </button>
+                    </form>
+                </div>
+
+                <div class="superset-exercises">
+                {% for gd in group %}
+                {% set gw = gd.workout %}
+                <div class="workout-row px-3">
+                    <div class="d-flex justify-content-between align-items-center gap-2">
+                        <div class="flex-grow-1">
+                            <a href="{{ url_for('view_workout', workout_id=gw.id) }}" class="text-decoration-none" style="color:var(--text-color);">
+                                <h6 class="mb-1 fw-semibold">{{ gd.name_it }}{% if gw.exercise_id %} <span class="badge bg-success" style="font-size:.5rem;"><i class="bi bi-book"></i></span>{% endif %}</h6>
+                            </a>
+                            <div class="d-flex align-items-center gap-2">
+                                <form method="POST" action="{{ url_for('update_session_workout', session_id=session.id, workout_id=gw.id) }}" class="d-flex align-items-center gap-2 flex-wrap">
+                                    <div class="weight-ctrl">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
+                                        <input type="text" name="weight" value="{{ gw.weight or '' }}" placeholder="kg">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-sm" title="Salva">
+                                        <i class="bi bi-check-lg"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('delete_session_workout', session_id=session.id, workout_id=gw.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio dalla sessione?')" title="Rimuovi">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                </div>
+            </div>
+
+        {% elif not w.superset_id %}
         <div class="workout-row px-3">
             <div class="d-flex justify-content-between align-items-center gap-2">
                 <div class="flex-grow-1">
@@ -67,6 +161,8 @@
                 </div>
             </div>
         </div>
+        {% endif %}
+
         {% endfor %}
     </div>
 </div>

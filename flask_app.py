@@ -958,6 +958,32 @@ def update_session_workout(session_id, workout_id):
     return redirect(url_for("session_view", session_id=session_id))
 
 
+@app.route("/session/<int:session_id>/superset/<int:superset_id>/update", methods=["POST"])
+@login_required
+def update_superset_group(session_id, superset_id):
+    session = RoutineSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        flash("✗ Non hai accesso.", "danger")
+        return redirect(url_for("dashboard"))
+
+    workouts = Workout.query.filter_by(session_id=session.id, superset_id=superset_id, user_id=current_user.id).all()
+    if not workouts:
+        flash("✗ Superset non valido.", "danger")
+        return redirect(url_for("session_view", session_id=session_id))
+
+    sets = request.form.get("sets", "").strip()
+    reps = request.form.get("reps", "").strip()
+
+    for w in workouts:
+        if sets and sets.isdigit():
+            w.sets = int(sets)
+        if reps:
+            w.reps = reps
+
+    db.session.commit()
+    return redirect(url_for("session_view", session_id=session_id))
+
+
 @app.route("/session/<int:session_id>/workout/<int:workout_id>/delete", methods=["POST"])
 @login_required
 def delete_session_workout(session_id, workout_id):
@@ -1094,9 +1120,10 @@ def stats():
 @login_required
 def clear_stats():
     try:
-        Workout.query.filter_by(user_id=current_user.id).delete()
-        RoutineSession.query.filter_by(user_id=current_user.id).delete()
-        WeightHistory.query.filter_by(user_id=current_user.id).delete()
+        uid = current_user.id
+        db.session.execute(text("DELETE FROM workout WHERE user_id = :uid"), {"uid": uid})
+        db.session.execute(text("DELETE FROM routine_session WHERE user_id = :uid"), {"uid": uid})
+        db.session.execute(text("DELETE FROM weight_history WHERE user_id = :uid"), {"uid": uid})
         db.session.commit()
         return jsonify({"success": True})
     except Exception as e:
