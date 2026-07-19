@@ -55,6 +55,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     workouts = db.relationship('Workout', backref='user', lazy=True, cascade='all, delete-orphan')
+    weight_history = db.relationship('WeightHistory', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -82,6 +83,35 @@ class Workout(db.Model):
 
     def __repr__(self):
         return f"<Workout {self.id} {self.exercise} on {self.date} ({self.day}#{self.position})>"
+
+
+class WeightHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    workout_id = db.Column(db.Integer, db.ForeignKey('workout.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    weight = db.Column(db.Float, nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<WeightHistory {self.id} workout={self.workout_id} {self.weight}kg on {self.date}>"
+
+
+def log_weight(workout, weight_str):
+    """Log a weight entry to history if weight is a valid number."""
+    if not weight_str:
+        return
+    try:
+        w_val = float(weight_str.replace(",", "."))
+    except (ValueError, AttributeError):
+        return
+    entry = WeightHistory(
+        workout_id=workout.id,
+        user_id=workout.user_id,
+        weight=w_val,
+        date=workout.date,
+    )
+    db.session.add(entry)
 
 
 # ============= FORM =============
@@ -522,6 +552,11 @@ def add_workout():
                 position=position
             )
             db.session.add(workout)
+            db.session.flush()
+
+            if weight:
+                log_weight(workout, weight)
+
             db.session.commit()
             flash("✓ Allenamento aggiunto.", "success")
             return redirect(url_for("dashboard"))
@@ -594,8 +629,12 @@ def edit_workout(workout_id):
             w.exercise_id = exercise_id
             w.sets = int(sets) if sets and sets.isdigit() else None
             w.reps = reps if reps else None
+            old_weight = w.weight
             w.weight = weight if weight else None
             w.notes = notes if notes else None
+
+            if weight and weight != old_weight:
+                log_weight(w, weight)
 
             if day != old_day:
                 if old_day:
@@ -660,22 +699,26 @@ def delete_workout(workout_id):
 @app.route("/update-weight/<int:workout_id>", methods=["POST"])
 @login_required
 def update_weight(workout_id):
-    """Aggiorna il peso di un workout rapidamente"""
     try:
         w = Workout.query.get_or_404(workout_id)
         if w.user_id != current_user.id:
-            flash("✗ Non hai accesso a questo workout.", "danger")
+            flash("Non hai accesso a questo workout.", "danger")
             return redirect(url_for("dashboard"))
         
         weight = request.form.get("weight", "").strip()
+        old_weight = w.weight
         w.weight = weight if weight else None
+
+        if weight and weight != old_weight:
+            log_weight(w, weight)
+
         db.session.commit()
         
-        flash(f"✓ Peso aggiornato a {weight} kg", "success")
+        flash(f"Peso aggiornato a {weight} kg", "success")
     except Exception as e:
         db.session.rollback()
         print(f"Update weight error: {e}")
-        flash(f"✗ Errore: {str(e)}", "danger")
+        flash(f"Errore: {str(e)}", "danger")
     
     return redirect(request.referrer or url_for("day_view", day_name=w.day))
 
@@ -710,6 +753,122 @@ def reorder_days_batch():
         db.session.rollback()
         print(f"Reorder days error: {e}")
         return {'success': False, 'error': str(e)}, 400
+
+
+# ============= ROUTES STATS =============
+
+@app.route("/stats")
+@login_required
+def stats():
+    days = ["Day1", "Day2", "Day3", "Day4", "Day5"]
+    day_stats = {}
+    for d in days:
+        workouts = Workout.query.filter_by(day=d, user_id=current_user.id).order_by(Workout.position.asc()).all()
+        exercises = []
+        for wo in workouts:
+            latest = WeightHistory.query.filter_by(workout_id=wo.id, user_id=current_user.id).order_by(WeightHistory.date.desc(), WeightHistory.id.desc()).first()
+            pr = WeightHistory.query.filter_by(workout_id=wo.id, user_id=current_user.id).order_by(WeightHistory.weight.desc()).first()
+            count = WeightHistory.query.filter_by(workout_id=wo.id, user_id=current_user.id).count()
+            name_it = wo.exercise
+            if wo.exercise_id:
+                ex_data = EXERCISES_BY_ID.get(wo.exercise_id)
+                if ex_data:
+                    name_it = get_exercise_name_it(ex_data)
+            exercises.append({
+                "workout": wo,
+                "name_it": name_it,
+                "latest_weight": latest.weight if latest else None,
+                "latest_date": latest.date if latest else None,
+                "pr_weight": pr.weight if pr else None,
+                "pr_date": pr.date if pr else None,
+                "total_entries": count,
+            })
+        day_stats[d] = exercises
+    return render_template("stats.html", day_stats=day_stats, days=days, now_date=datetime.utcnow().date().isoformat())
+
+
+@app.route("/api/weight-history/<int:workout_id>")
+@login_required
+def get_weight_history(workout_id):
+    w = Workout.query.get_or_404(workout_id)
+    if w.user_id != current_user.id:
+        return jsonify({"error": "Non hai accesso"}), 403
+    entries = WeightHistory.query.filter_by(
+        workout_id=workout_id, user_id=current_user.id
+    ).order_by(WeightHistory.date.asc(), WeightHistory.id.asc()).all()
+    return jsonify([{
+        "id": e.id,
+        "weight": e.weight,
+        "date": e.date.isoformat(),
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    } for e in entries])
+
+
+@app.route("/api/weight-history/<int:workout_id>", methods=["POST"])
+@login_required
+def add_weight_entry(workout_id):
+    w = Workout.query.get_or_404(workout_id)
+    if w.user_id != current_user.id:
+        return jsonify({"error": "Non hai accesso"}), 403
+    data = request.get_json()
+    weight = data.get("weight")
+    date_str = data.get("date")
+    if not weight:
+        return jsonify({"error": "Peso mancante"}), 400
+    try:
+        w_val = float(str(weight).replace(",", "."))
+    except ValueError:
+        return jsonify({"error": "Peso non valido"}), 400
+    try:
+        entry_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else datetime.utcnow().date()
+    except ValueError:
+        entry_date = datetime.utcnow().date()
+    entry = WeightHistory(workout_id=workout_id, user_id=current_user.id, weight=w_val, date=entry_date)
+    db.session.add(entry)
+    w.weight = str(w_val)
+    db.session.commit()
+    return jsonify({"id": entry.id, "weight": entry.weight, "date": entry.date.isoformat()}), 201
+
+
+@app.route("/api/weight-history/entry/<int:entry_id>", methods=["PUT"])
+@login_required
+def update_weight_entry(entry_id):
+    entry = WeightHistory.query.get_or_404(entry_id)
+    if entry.user_id != current_user.id:
+        return jsonify({"error": "Non hai accesso"}), 403
+    data = request.get_json()
+    if "weight" in data:
+        try:
+            entry.weight = float(str(data["weight"]).replace(",", "."))
+        except ValueError:
+            return jsonify({"error": "Peso non valido"}), 400
+    if "date" in data:
+        try:
+            entry.date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    w = Workout.query.get(entry.workout_id)
+    if w:
+        w.weight = str(entry.weight)
+    db.session.commit()
+    return jsonify({"id": entry.id, "weight": entry.weight, "date": entry.date.isoformat()})
+
+
+@app.route("/api/weight-history/entry/<int:entry_id>", methods=["DELETE"])
+@login_required
+def delete_weight_entry(entry_id):
+    entry = WeightHistory.query.get_or_404(entry_id)
+    if entry.user_id != current_user.id:
+        return jsonify({"error": "Non hai accesso"}), 403
+    workout_id = entry.workout_id
+    db.session.delete(entry)
+    db.session.commit()
+    latest = WeightHistory.query.filter_by(workout_id=workout_id, user_id=current_user.id).order_by(WeightHistory.date.desc(), WeightHistory.id.desc()).first()
+    w = Workout.query.get(workout_id)
+    if w:
+        w.weight = str(latest.weight) if latest else None
+        db.session.commit()
+    return jsonify({"success": True})
 
 
 # ============= HELPER =============

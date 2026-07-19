@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Statistiche - Workout Tracker{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .stat-card { border: none; border-radius: 12px; overflow: hidden; }
+    .stat-card .card-header { padding: 1rem 1.25rem; }
+    .stat-badge { font-size: .75rem; padding: 3px 8px; border-radius: 12px; }
+    .exercise-row { transition: background .15s; }
+    .exercise-row:hover { background: #f8f6ff; }
+    .chart-container { position: relative; height: 220px; }
+    .history-table { font-size: .85rem; }
+    .history-table th { font-weight: 600; }
+    .history-table td { vertical-align: middle; }
+    .pr-badge { background: linear-gradient(135deg, #f093fb, #f5576c); color: #fff; }
+    .empty-day { color: #adb5bd; font-style: italic; }
+    .nav-pills .nav-link.active { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .nav-pills .nav-link { color: #667eea; }
+    .modal-weight-input { max-width: 120px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-graph-up"></i> Statistiche</h1>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Dashboard
+    </a>
+</div>
+
+<ul class="nav nav-pills mb-4" id="dayTabs" role="tablist">
+    {% for d in days %}
+    <li class="nav-item me-1">
+        <button class="nav-link {% if loop.first %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#tab-{{ d }}" type="button">
+            {{ d }}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content">
+    {% for d in days %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ d }}">
+        {% if day_stats[d] %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow stat-card mb-4">
+                    <div class="card-header text-white" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                        <h5 class="mb-0"><i class="bi bi-calendar-check"></i> {{ d }} — {{ day_stats[d]|length }} esercizi</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Esercizio</th>
+                                        <th class="text-center">Peso Attuale</th>
+                                        <th class="text-center">PR</th>
+                                        <th class="text-center">Sessioni</th>
+                                        <th class="text-center">Grafico</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ex in day_stats[d] %}
+                                    <tr class="exercise-row">
+                                        <td>
+                                            <a href="{{ url_for('view_workout', workout_id=ex.workout.id) }}" class="text-decoration-none fw-semibold">
+                                                {{ ex.name_it }}
+                                            </a>
+                                            <br><small class="text-muted">{{ ex.workout.sets or '-' }}x{{ ex.workout.reps or '-' }}</small>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if ex.latest_weight is not none %}
+                                                <span class="fw-bold">{{ ex.latest_weight }}</span> kg
+                                                <br><small class="text-muted">{{ ex.latest_date.strftime('%d/%m') if ex.latest_date else '' }}</small>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            {% if ex.pr_weight is not none %}
+                                                <span class="badge pr-badge">{{ ex.pr_weight }} kg</span>
+                                                <br><small class="text-muted">{{ ex.pr_date.strftime('%d/%m') if ex.pr_date else '' }}</small>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-secondary">{{ ex.total_entries }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="openChart({{ ex.workout.id }}, '{{ ex.name_it | replace("'", "\\'") }}')">
+                                                <i class="bi bi-bar-chart-line"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-secondary">
+            <i class="bi bi-info-circle"></i> Nessun esercizio assegnato a {{ d }}.
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Chart Modal -->
+<div class="modal fade" id="chartModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chartModalTitle">Grafico Pesi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="chart-container">
+                    <canvas id="weightChart"></canvas>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Cronologia</h6>
+                    <button class="btn btn-sm btn-success" onclick="showAddEntry()">
+                        <i class="bi bi-plus"></i> Aggiungi Sessione
+                    </button>
+                </div>
+                <div id="addEntryForm" style="display:none;" class="mb-3">
+                    <div class="input-group input-group-sm" style="max-width:350px;">
+                        <span class="input-group-text">Data</span>
+                        <input type="date" class="form-control" id="newEntryDate" value="{{ now_date }}">
+                        <span class="input-group-text">Peso</span>
+                        <input type="number" step="0.5" class="form-control modal-weight-input" id="newEntryWeight" placeholder="kg">
+                        <button class="btn btn-success" onclick="addEntry()"><i class="bi bi-check"></i></button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm history-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th class="text-center">Peso</th>
+                                <th class="text-center">Variazione</th>
+                                <th class="text-center">Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let chart = null;
+let currentWorkoutId = null;
+
+function openChart(workoutId, name) {
+    currentWorkoutId = workoutId;
+    document.getElementById('chartModalTitle').textContent = name;
+    document.getElementById('addEntryForm').style.display = 'none';
+    fetch('/api/weight-history/' + workoutId)
+        .then(r => r.json())
+        .then(data => {
+            renderChart(data);
+            renderHistory(data);
+        });
+    new bootstrap.Modal(document.getElementById('chartModal')).show();
+}
+
+function renderChart(data) {
+    const ctx = document.getElementById('weightChart').getContext('2d');
+    if (chart) chart.destroy();
+    const labels = data.map(d => d.date.split('-').reverse().join('/'));
+    const weights = data.map(d => d.weight);
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Peso (kg)',
+                data: weights,
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102,126,234,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4,
+                pointBackgroundColor: '#667eea',
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' kg' } }
+            },
+            scales: {
+                y: { beginAtZero: false, title: { display: true, text: 'kg' } }
+            }
+        }
+    });
+}
+
+function renderHistory(data) {
+    const tbody = document.getElementById('historyBody');
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nessuna registrazione</td></tr>';
+        return;
+    }
+    const reversed = [...data].reverse();
+    tbody.innerHTML = reversed.map((entry, i) => {
+        const prev = reversed[i + 1];
+        let delta = '';
+        if (prev) {
+            const diff = (entry.weight - prev.weight).toFixed(1);
+            if (diff > 0) delta = '<span class="text-success">+' + diff + '</span>';
+            else if (diff < 0) delta = '<span class="text-danger">' + diff + '</span>';
+            else delta = '<span class="text-muted">0</span>';
+        }
+        return '<tr>' +
+            '<td><input type="date" class="form-control form-control-sm" value="' + entry.date + '" onchange="updateEntry(' + entry.id + ', this.value, null)" style="max-width:140px;"></td>' +
+            '<td class="text-center"><input type="number" step="0.5" class="form-control form-control-sm text-center" value="' + entry.weight + '" onchange="updateEntry(' + entry.id + ', null, this.value)" style="max-width:80px;display:inline-block;"> kg</td>' +
+            '<td class="text-center">' + delta + '</td>' +
+            '<td class="text-center"><button class="btn btn-sm btn-outline-danger" onclick="deleteEntry(' + entry.id + ')"><i class="bi bi-trash"></i></button></td>' +
+            '</tr>';
+    }).join('');
+}
+
+function showAddEntry() {
+    const f = document.getElementById('addEntryForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+function addEntry() {
+    const date = document.getElementById('newEntryDate').value;
+    const weight = document.getElementById('newEntryWeight').value;
+    if (!weight) return;
+    fetch('/api/weight-history/' + currentWorkoutId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date: date, weight: parseFloat(weight)})
+    }).then(r => r.json()).then(entry => {
+        document.getElementById('newEntryWeight').value = '';
+        openChart(currentWorkoutId, document.getElementById('chartModalTitle').textContent);
+    });
+}
+
+function updateEntry(id, date, weight) {
+    const body = {};
+    if (date) body.date = date;
+    if (weight !== null) body.weight = parseFloat(weight);
+    fetch('/api/weight-history/entry/' + id, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(r => r.json()).then(() => {
+        openChart(currentWorkoutId, document.getElementById('chartModalTitle').textContent);
+    });
+}
+
+function deleteEntry(id) {
+    if (!confirm('Eliminare questa registrazione?')) return;
+    fetch('/api/weight-history/entry/' + id, { method: 'DELETE' })
+        .then(r => r.json()).then(() => {
+            openChart(currentWorkoutId, document.getElementById('chartModalTitle').textContent);
+        });
+}
+</script>
+{% endblock %}

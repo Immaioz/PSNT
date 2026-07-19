@@ -2,6 +2,14 @@
 
 {% block title %}{{ day_name }} - Workout Tracker{% endblock %}
 
+{% block extra_css %}
+<style>
+    .weight-ctrl { display: flex; align-items: center; gap: 4px; }
+    .weight-ctrl .btn { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .weight-ctrl input { width: 70px; text-align: center; font-weight: 700; font-size: .95rem; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1><i class="bi bi-calendar-check"></i> {{ day_name }}</h1>
@@ -27,24 +35,23 @@
                                 </small>
                             </div>
                             
-                            <!-- Quick Weight Modifier -->
+                            <!-- Quick Weight Modifier with +/- buttons -->
                             <form method="POST" action="{{ url_for('update_weight', workout_id=workout.id) }}" class="d-flex align-items-center gap-2">
-                                <div class="input-group input-group-sm" style="width: 140px;">
-                                    <span class="input-group-text">
-                                        <i class="bi bi-arrow-down-up"></i>
-                                    </span>
+                                <div class="weight-ctrl">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
                                     <input 
                                         type="text" 
-                                        class="form-control text-center" 
+                                        class="form-control form-control-sm" 
                                         name="weight" 
                                         value="{{ workout.weight or '' }}" 
                                         placeholder="kg"
-                                        style="font-weight: 600; font-size: 0.95rem;"
+                                        data-workout-id="{{ workout.id }}"
                                     >
-                                    <button type="submit" class="btn btn-primary btn-sm" title="Aggiorna peso">
-                                        <i class="bi bi-check"></i>
-                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
                                 </div>
+                                <button type="submit" class="btn btn-primary btn-sm" title="Salva">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
                             </form>
 
                             <!-- Edit/Delete Buttons -->
@@ -70,4 +77,18 @@
         <a href="{{ url_for('add_workout') }}" class="alert-link">Aggiungi uno</a>
     </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function adjustWeight(btn, delta) {
+    const form = btn.closest('form');
+    const input = form.querySelector('input[name="weight"]');
+    let val = parseFloat(input.value) || 0;
+    val = Math.round((val + delta) * 10) / 10;
+    if (val <= 0) val = '';
+    input.value = val;
+    form.submit();
+}
+</script>
 {% endblock %}
