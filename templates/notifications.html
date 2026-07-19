@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Notifiche - PSNT{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 style="color:var(--text-color);"><i class="bi bi-bell"></i> Notifiche</h1>
+</div>
+
+{% if received|length > 0 %}
+<h5 class="mb-3" style="color:var(--text-color);"><i class="bi bi-inbox"></i> Richieste Ricevute</h5>
+<div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+        {% for item in received %}
+        <div class="d-flex justify-content-between align-items-center px-3 py-3" style="border-bottom:1px solid var(--border-color);">
+            <div class="d-flex align-items-center gap-3">
+                {% if item.user.profile_image %}
+                    <img src="{{ item.user.profile_image }}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">
+                {% else %}
+                    <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-color);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:1.2rem;">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                {% endif %}
+                <div>
+                    <div class="fw-semibold" style="color:var(--text-color);">{{ item.user.username }} <span class="text-muted" style="font-size:.8rem;">#{{ item.user.friend_code }}</span></div>
+                    <small class="text-muted">Vuole aggiungerti come amico</small>
+                </div>
+            </div>
+            <div class="d-flex gap-1">
+                <form method="POST" action="{{ url_for('accept_friend_request', friendship_id=item.friendship.id) }}">
+                    <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg"></i> Accetta</button>
+                </form>
+                <form method="POST" action="{{ url_for('reject_friend_request', friendship_id=item.friendship.id) }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-x-lg"></i> Rifiuta</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if sent|length > 0 %}
+<h5 class="mb-3" style="color:var(--text-color);"><i class="bi bi-send"></i> Richieste Inviate</h5>
+<div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+        {% for item in sent %}
+        <div class="d-flex justify-content-between align-items-center px-3 py-3" style="border-bottom:1px solid var(--border-color);">
+            <div class="d-flex align-items-center gap-3">
+                {% if item.user.profile_image %}
+                    <img src="{{ item.user.profile_image }}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">
+                {% else %}
+                    <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-color);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:1.2rem;">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                {% endif %}
+                <div>
+                    <div class="fw-semibold" style="color:var(--text-color);">{{ item.user.username }} <span class="text-muted" style="font-size:.8rem;">#{{ item.user.friend_code }}</span></div>
+                    <small class="text-muted">In attesa di risposta</small>
+                </div>
+            </div>
+            <span class="badge bg-warning text-dark"><i class="bi bi-clock"></i> In attesa</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if friends|length > 0 %}
+<h5 class="mb-3" style="color:var(--text-color);"><i class="bi bi-people-fill"></i> Amici ({{ friends|length }})</h5>
+<div class="card shadow-sm mb-4">
+    <div class="card-body p-0">
+        {% for item in friends %}
+        <div class="d-flex justify-content-between align-items-center px-3 py-3" style="border-bottom:1px solid var(--border-color);">
+            <div class="d-flex align-items-center gap-3">
+                {% if item.user.profile_image %}
+                    <img src="{{ item.user.profile_image }}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">
+                {% else %}
+                    <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-color);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:1.2rem;">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                {% endif %}
+                <div>
+                    <div class="fw-semibold" style="color:var(--text-color);">{{ item.user.username }} <span class="text-muted" style="font-size:.8rem;">#{{ item.user.friend_code }}</span></div>
+                </div>
+            </div>
+            <div class="d-flex gap-1">
+                <a href="{{ url_for('friend_stats', user_id=item.user.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-graph-up"></i> Stats
+                </a>
+                <form method="POST" action="{{ url_for('remove_friend', friendship_id=item.friendship.id) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere {{ item.user.username }} dagli amici?')">
+                        <i class="bi bi-person-dash"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if received|length == 0 and sent|length == 0 and friends|length == 0 %}
+<div class="text-center py-5">
+    <i class="bi bi-bell-slash display-1 text-muted"></i>
+    <h4 class="mt-3 text-muted">Nessuna notifica</h4>
+    <p class="text-muted">Cerca utenti con il loro Username#XXXX per iniziare.</p>
+    <a href="{{ url_for('search_users') }}" class="btn btn-primary"><i class="bi bi-search"></i> Cerca Utenti</a>
+</div>
+{% endif %}
+{% endblock %}

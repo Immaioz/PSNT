@@ -203,6 +203,15 @@
                                 {{ current_user.username }}
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" style="background:var(--surface-color);border-color:var(--border-color);">
+                                <li><a class="dropdown-item" href="{{ url_for('search_users') }}" style="color:var(--text-color);"><i class="bi bi-search me-2"></i>Cerca</a></li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('notifications') }}" style="color:var(--text-color);">
+                                        <i class="bi bi-bell me-2"></i>Notifiche
+                                        {% if pending_requests_count > 0 %}
+                                            <span class="badge bg-danger ms-1" style="font-size:.65rem;">{{ pending_requests_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                </li>
                                 <li><a class="dropdown-item" href="{{ url_for('profile') }}" style="color:var(--text-color);"><i class="bi bi-gear me-2"></i>Profilo</a></li>
                                 <li><a class="dropdown-item" href="{{ url_for('stats') }}" style="color:var(--text-color);"><i class="bi bi-graph-up me-2"></i>Stats</a></li>
                                 <li><hr class="dropdown-divider" style="border-color:var(--border-color);"></li>

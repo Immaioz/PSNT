@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import os
+import random
 from sqlalchemy import inspect, text, func
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -58,6 +59,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     profile_image = db.Column(db.Text, nullable=True)
+    friend_code = db.Column(db.String(4), unique=True, nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     routines = db.relationship('Routine', backref='user', lazy=True, cascade='all, delete-orphan')
     routine_exercises = db.relationship('RoutineExercise', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -148,6 +150,25 @@ class WeightHistory(db.Model):
         return f"<WeightHistory {self.id} workout={self.workout_id} {self.weight}kg>"
 
 
+class Friendship(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('requester_id', 'receiver_id'),)
+
+    def __repr__(self):
+        return f"<Friendship {self.requester_id}->{self.receiver_id} {self.status}>"
+
+
+def _generate_friend_code():
+    while True:
+        code = f"{random.randint(1000, 9999)}"
+        if not User.query.filter_by(friend_code=code).first():
+            return code
+
+
 def log_weight(workout, weight_str):
     if not weight_str:
         return
@@ -202,6 +223,14 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
+@app.context_processor
+def inject_pending_requests():
+    if current_user.is_authenticated:
+        count = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").count()
+        return dict(pending_requests_count=count)
+    return dict(pending_requests_count=0)
+
+
 # ============= DATABASE MIGRATION =============
 
 def ensure_database():
@@ -247,6 +276,14 @@ def ensure_database():
                     db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN profile_image TEXT"))
                     db.session.commit()
                     print("✓ Colonna profile_image aggiunta a user")
+                if "friend_code" not in user_cols:
+                    db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN friend_code VARCHAR(4)"))
+                    db.session.commit()
+                    print("✓ Colonna friend_code aggiunta a user")
+                    for u in User.query.filter_by(friend_code=None).all():
+                        u.friend_code = _generate_friend_code()
+                    db.session.commit()
+                    print("✓ friend_code assegnati a utenti esistenti")
 
             all_users = User.query.all()
             for user in all_users:
@@ -520,7 +557,8 @@ def register():
         try:
             user = User(
                 username=form.username.data.strip(),
-                email=form.email.data.strip().lower()
+                email=form.email.data.strip().lower(),
+                friend_code=_generate_friend_code()
             )
             user.set_password(form.password.data)
 
@@ -623,6 +661,235 @@ def profile():
         return redirect(url_for("profile"))
 
     return render_template("profile.html")
+
+
+# ============= ROUTES FRIENDSHIPS =============
+
+@app.route("/search", methods=["GET", "POST"])
+@login_required
+def search_users():
+    results = []
+    query = ""
+    if request.method == "POST":
+        query = request.form.get("query", "").strip()
+    elif request.args.get("q"):
+        query = request.args.get("q", "").strip()
+
+    if query:
+        if "#" in query:
+            parts = query.split("#", 1)
+            name_part = parts[0].strip()
+            code_part = parts[1].strip()
+            user = User.query.filter(
+                func.lower(User.username) == name_part.lower(),
+                User.friend_code == code_part,
+                User.id != current_user.id
+            ).first()
+            if user:
+                results = [user]
+        else:
+            users = User.query.filter(
+                func.lower(User.username).contains(query.lower()),
+                User.id != current_user.id
+            ).limit(20).all()
+            results = users
+
+    friendships = {}
+    for u in results:
+        f = Friendship.query.filter(
+            ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == u.id)) |
+            ((Friendship.requester_id == u.id) & (Friendship.receiver_id == current_user.id))
+        ).first()
+        friendships[u.id] = f
+
+    return render_template("search.html", results=results, query=query, friendships=friendships)
+
+
+@app.route("/friend-request/<int:user_id>", methods=["POST"])
+@login_required
+def send_friend_request(user_id):
+    if user_id == current_user.id:
+        flash("✗ Non puoi aggiungere te stesso.", "danger")
+        return redirect(url_for("search_users"))
+
+    target = db.session.get(User, user_id)
+    if not target:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("search_users"))
+
+    existing = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
+        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id))
+    ).first()
+
+    if existing:
+        if existing.status == "accepted":
+            flash("✗ Siete già amici.", "info")
+        elif existing.status == "pending":
+            if existing.receiver_id == current_user.id:
+                existing.status = "accepted"
+                db.session.commit()
+                flash(f"✓ Richiesta di {target.username} accettata!", "success")
+            else:
+                flash("✗ Richiesta già inviata.", "info")
+        return redirect(url_for("search_users"))
+
+    f = Friendship(requester_id=current_user.id, receiver_id=user_id, status="pending")
+    db.session.add(f)
+    db.session.commit()
+    flash(f"✓ Richiesta di amicizia inviata a {target.username}.", "success")
+    return redirect(url_for("search_users"))
+
+
+@app.route("/friend-accept/<int:friendship_id>", methods=["POST"])
+@login_required
+def accept_friend_request(friendship_id):
+    f = db.session.get(Friendship, friendship_id)
+    if not f or f.receiver_id != current_user.id or f.status != "pending":
+        flash("✗ Richiesta non valida.", "danger")
+        return redirect(url_for("notifications"))
+
+    f.status = "accepted"
+    db.session.commit()
+    requester = db.session.get(User, f.requester_id)
+    flash(f"✓ Amicizia con {requester.username} accettata!", "success")
+    return redirect(url_for("notifications"))
+
+
+@app.route("/friend-reject/<int:friendship_id>", methods=["POST"])
+@login_required
+def reject_friend_request(friendship_id):
+    f = db.session.get(Friendship, friendship_id)
+    if not f or f.receiver_id != current_user.id or f.status != "pending":
+        flash("✗ Richiesta non valida.", "danger")
+        return redirect(url_for("notifications"))
+
+    db.session.delete(f)
+    db.session.commit()
+    flash("✗ Richiesta rifiutata.", "info")
+    return redirect(url_for("notifications"))
+
+
+@app.route("/friend-remove/<int:friendship_id>", methods=["POST"])
+@login_required
+def remove_friend(friendship_id):
+    f = db.session.get(Friendship, friendship_id)
+    if not f or f.status != "accepted":
+        flash("✗ Amicizia non valida.", "danger")
+        return redirect(url_for("notifications"))
+
+    if f.requester_id != current_user.id and f.receiver_id != current_user.id:
+        flash("✗ Non hai accesso.", "danger")
+        return redirect(url_for("notifications"))
+
+    other = db.session.get(User, f.receiver_id if f.requester_id == current_user.id else f.requester_id)
+    db.session.delete(f)
+    db.session.commit()
+    flash(f"✗ Amicizia con {other.username} rimossa.", "info")
+    return redirect(url_for("notifications"))
+
+
+@app.route("/notifications")
+@login_required
+def notifications():
+    received = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").all()
+    sent = Friendship.query.filter_by(requester_id=current_user.id, status="pending").all()
+    friends = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) | (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).all()
+
+    received_users = []
+    for f in received:
+        u = db.session.get(User, f.requester_id)
+        if u:
+            received_users.append({"friendship": f, "user": u})
+
+    sent_users = []
+    for f in sent:
+        u = db.session.get(User, f.receiver_id)
+        if u:
+            sent_users.append({"friendship": f, "user": u})
+
+    friend_users = []
+    for f in friends:
+        uid = f.receiver_id if f.requester_id == current_user.id else f.requester_id
+        u = db.session.get(User, uid)
+        if u:
+            friend_users.append({"friendship": f, "user": u})
+
+    return render_template("notifications.html",
+                           received=received_users, sent=sent_users, friends=friend_users)
+
+
+@app.route("/friend-stats/<int:user_id>")
+@login_required
+def friend_stats(user_id):
+    target = db.session.get(User, user_id)
+    if not target:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("notifications"))
+
+    f = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
+        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).first()
+
+    if not f:
+        flash("✗ Puoi vedere le stats solo degli amici accettati.", "danger")
+        return redirect(url_for("notifications"))
+
+    routines = Routine.query.filter_by(user_id=target.id).order_by(Routine.position.asc()).all()
+    routine_stats = {}
+
+    for r in routines:
+        template_exercises = RoutineExercise.query.filter_by(routine_id=r.id).order_by(RoutineExercise.position.asc()).all()
+        sessions = RoutineSession.query.filter_by(routine_id=r.id, user_id=target.id).order_by(RoutineSession.date.desc()).all()
+        exercise_stats = []
+
+        for re in template_exercises:
+            session_workouts = []
+            for s in sessions:
+                wo = Workout.query.filter_by(session_id=s.id, exercise=re.exercise, user_id=target.id).first()
+                if wo:
+                    session_workouts.append((s, wo))
+
+            latest_sw = session_workouts[0] if session_workouts else None
+            pr_sw = max(session_workouts, key=lambda x: float(x[1].weight) if x[1].weight else 0) if session_workouts else None
+
+            latest_weight = None
+            latest_date = None
+            if latest_sw:
+                try:
+                    latest_weight = float(latest_sw[1].weight.replace(",", ".")) if latest_sw[1].weight else None
+                except (ValueError, AttributeError):
+                    latest_weight = None
+                latest_date = latest_sw[0].date
+
+            pr_weight = None
+            pr_date = None
+            if pr_sw and pr_sw[1].weight:
+                try:
+                    pr_weight = float(pr_sw[1].weight.replace(",", "."))
+                    pr_date = pr_sw[0].date
+                except (ValueError, AttributeError):
+                    pass
+
+            exercise_stats.append({
+                "routine_exercise": re,
+                "name_it": _resolve_exercise_name(re.exercise, re.exercise_id),
+                "latest_weight": latest_weight,
+                "latest_date": latest_date,
+                "pr_weight": pr_weight,
+                "pr_date": pr_date,
+                "total_sessions": len(session_workouts),
+            })
+
+        if exercise_stats:
+            routine_stats[r.name] = exercise_stats
+
+    return render_template("friend_stats.html", target=target, routine_stats=routine_stats, routines=routines)
 
 
 # ============= ROUTES DASHBOARD =============
@@ -1194,20 +1461,30 @@ def clear_stats():
 @login_required
 def routine_exercise_history(routine_id):
     routine = Routine.query.get_or_404(routine_id)
-    if routine.user_id != current_user.id:
-        return jsonify({"error": "Non hai accesso"}), 403
+    owner_id = routine.user_id
+
+    if owner_id == current_user.id:
+        pass
+    else:
+        f = Friendship.query.filter(
+            ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == owner_id)) |
+            ((Friendship.requester_id == owner_id) & (Friendship.receiver_id == current_user.id)),
+            Friendship.status == "accepted"
+        ).first()
+        if not f:
+            return jsonify({"error": "Non hai accesso"}), 403
 
     exercise_name = request.args.get("exercise", "").strip()
     exercise_id = request.args.get("exercise_id", "").strip() or None
-    sessions = RoutineSession.query.filter_by(routine_id=routine.id, user_id=current_user.id).order_by(RoutineSession.date.asc()).all()
+    sessions = RoutineSession.query.filter_by(routine_id=routine.id, user_id=owner_id).order_by(RoutineSession.date.asc()).all()
 
     data = []
     for s in sessions:
         wo = None
         if exercise_id:
-            wo = Workout.query.filter_by(session_id=s.id, exercise_id=exercise_id, user_id=current_user.id).first()
+            wo = Workout.query.filter_by(session_id=s.id, exercise_id=exercise_id, user_id=owner_id).first()
         if not wo:
-            wo = Workout.query.filter_by(session_id=s.id, exercise=exercise_name, user_id=current_user.id).first()
+            wo = Workout.query.filter_by(session_id=s.id, exercise=exercise_name, user_id=owner_id).first()
         if wo and wo.weight:
             try:
                 w_val = float(wo.weight.replace(",", "."))

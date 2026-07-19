@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Stats di {{ target.username }} - PSNT{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .stat-card { border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
+    .stat-card .card-header { padding: 0.75rem 1.25rem; background: var(--surface-color); border-bottom: 1px solid var(--border-color); }
+    .chart-container { position: relative; height: 220px; }
+    .pr-badge { background: #7c3aed; color: #fff; }
+    .nav-pills .nav-link { color: var(--primary-color); border: 1px solid var(--border-color); }
+    .nav-pills .nav-link.active { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+    .stats-table { width: 100%; border-collapse: collapse; }
+    .stats-table th {
+        padding: 0.6rem 0.75rem;
+        font-weight: 600;
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--text-muted);
+        background: var(--bg-color);
+        border-bottom: 2px solid var(--border-color);
+    }
+    .stats-table td {
+        padding: 0.65rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-color);
+        vertical-align: middle;
+    }
+    .stats-table tr:hover td { background: var(--bg-color); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('notifications') }}" class="text-decoration-none text-muted"><i class="bi bi-arrow-left"></i> Notifiche</a>
+        <h1 class="mt-1 mb-0" style="color:var(--text-color);">
+            {% if target.profile_image %}
+                <img src="{{ target.profile_image }}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;">
+            {% else %}
+                <i class="bi bi-person-circle"></i>
+            {% endif %}
+            {{ target.username }} <span class="text-muted" style="font-size:.9rem;">#{{ target.friend_code }}</span>
+        </h1>
+        <small class="text-muted"><i class="bi bi-graph-up"></i> Statistiche</small>
+    </div>
+</div>
+
+{% if routines|length > 0 %}
+<ul class="nav nav-pills mb-4" role="tablist">
+    {% for r in routines %}
+    <li class="nav-item me-1">
+        <button class="nav-link {% if loop.first %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#tab-{{ r.id }}" type="button">
+            {{ r.name }}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content">
+    {% for r in routines %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ r.id }}">
+        {% if routine_stats[r.name] and routine_stats[r.name]|length > 0 %}
+        <div class="card shadow-sm stat-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0" style="color:var(--text-color);"><i class="bi bi-calendar-check"></i> {{ r.name }} — {{ routine_stats[r.name]|length }} esercizi</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="stats-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Esercizio</th>
+                                <th class="text-center">Peso Attuale</th>
+                                <th class="text-center">PR</th>
+                                <th class="text-center">Sessioni</th>
+                                <th class="text-center">Grafico</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ex in routine_stats[r.name] %}
+                            <tr>
+                                <td>
+                                    <span class="fw-semibold">{{ ex.name_it }}</span>
+                                    <br><small class="text-muted">{{ ex.routine_exercise.default_sets or '-' }}x{{ ex.routine_exercise.default_reps or '-' }}</small>
+                                </td>
+                                <td class="text-center">
+                                    {% if ex.latest_weight is not none %}
+                                        <span class="fw-bold">{{ ex.latest_weight }}</span> kg
+                                        <br><small class="text-muted">{{ ex.latest_date.strftime('%d/%m') if ex.latest_date else '' }}</small>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if ex.pr_weight is not none %}
+                                        <span class="badge pr-badge">{{ ex.pr_weight }} kg</span>
+                                        <br><small class="text-muted">{{ ex.pr_date.strftime('%d/%m') if ex.pr_date else '' }}</small>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary">{{ ex.total_sessions }}</span>
+                                </td>
+                                <td class="text-center">
+                                    {% if ex.total_sessions > 0 %}
+                                    <button class="btn btn-sm btn-outline-primary" onclick="openChart({{ r.id }}, '{{ ex.name_it | replace("'", "\\'") }}', '{{ ex.routine_exercise.exercise_id or '' }}')">
+                                        <i class="bi bi-bar-chart-line"></i>
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="bi bi-graph-up display-1 text-muted"></i>
+    <h4 class="mt-3 text-muted">Nessun dato disponibile</h4>
+</div>
+{% endif %}
+
+<!-- Chart Modal -->
+<div class="modal fade" id="chartModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chartModalTitle" style="color:var(--text-color);">Grafico Pesi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="chart-container">
+                    <canvas id="weightChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let chart = null;
+
+function openChart(routineId, exerciseName, exerciseId) {
+    document.getElementById('chartModalTitle').textContent = exerciseName;
+    let url = '/api/routine-exercise-history/' + routineId + '?exercise=' + encodeURIComponent(exerciseName);
+    if (exerciseId) url += '&exercise_id=' + encodeURIComponent(exerciseId);
+    new bootstrap.Modal(document.getElementById('chartModal')).show();
+    fetch(url, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => renderChart(data))
+        .catch(e => console.error('Chart error:', e));
+}
+
+function getChartColors() {
+    const isDark = document.body.classList.contains('dark-mode');
+    return {
+        line: isDark ? '#818cf8' : '#4f46e5',
+        fill: isDark ? 'rgba(129,140,248,0.15)' : 'rgba(79,70,229,0.1)',
+        point: isDark ? '#818cf8' : '#4f46e5',
+        gridColor: isDark ? '#334155' : '#e2e8f0',
+        labelColor: isDark ? '#94a3b8' : '#475569',
+        tooltipBg: isDark ? '#1e293b' : '#ffffff',
+        tooltipText: isDark ? '#e2e8f0' : '#1e293b',
+        tooltipBorder: isDark ? '#334155' : '#e2e8f0',
+    };
+}
+
+function renderChart(data) {
+    const ctx = document.getElementById('weightChart').getContext('2d');
+    if (chart) chart.destroy();
+    const colors = getChartColors();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.date),
+            datasets: [{
+                label: 'Peso (kg)',
+                data: data.map(d => d.weight),
+                borderColor: colors.line,
+                backgroundColor: colors.fill,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 5,
+                pointBackgroundColor: colors.point,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: colors.tooltipBg,
+                    titleColor: colors.tooltipText,
+                    bodyColor: colors.tooltipText,
+                    borderColor: colors.tooltipBorder,
+                    borderWidth: 1,
+                    callbacks: { label: ctx => ctx.parsed.y + ' kg' }
+                }
+            },
+            scales: {
+                x: { ticks: { color: colors.labelColor }, grid: { color: colors.gridColor } },
+                y: {
+                    beginAtZero: false,
+                    title: { display: true, text: 'kg', color: colors.labelColor },
+                    ticks: { color: colors.labelColor },
+                    grid: { color: colors.gridColor }
+                }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}
