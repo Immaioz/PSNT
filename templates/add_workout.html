@@ -16,14 +16,12 @@
                             <input type="date" class="form-control form-control-lg" id="date" name="date" value="{{ default_date }}" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="day" class="form-label">Giorno</label>
+                            <label for="day" class="form-label">Routine</label>
                             <select class="form-select form-select-lg" id="day" name="day">
-                                <option value="">-- Seleziona un giorno --</option>
-                                <option value="Day1">Day 1</option>
-                                <option value="Day2">Day 2</option>
-                                <option value="Day3">Day 3</option>
-                                <option value="Day4">Day 4</option>
-                                <option value="Day5">Day 5</option>
+                                <option value="">-- Seleziona una routine --</option>
+                                {% for r in routines %}
+                                    <option value="{{ r.name }}">{{ r.name }}</option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>

@@ -21,6 +21,9 @@ def get_database_uri():
     if database_url:
         if database_url.startswith("postgres://"):
             database_url = database_url.replace("postgres://", "postgresql://", 1)
+        if "sslmode" not in database_url:
+            separator = "&" if "?" in database_url else "?"
+            database_url += separator + "sslmode=require"
         return database_url
     return "sqlite:///" + Path(DB_PATH).as_posix()
 
@@ -56,6 +59,7 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     workouts = db.relationship('Workout', backref='user', lazy=True, cascade='all, delete-orphan')
     weight_history = db.relationship('WeightHistory', backref='user', lazy=True, cascade='all, delete-orphan')
+    routines = db.relationship('Routine', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -77,7 +81,7 @@ class Workout(db.Model):
     reps = db.Column(db.String(50), nullable=True)
     weight = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
-    day = db.Column(db.String(10), nullable=True)
+    day = db.Column(db.String(50), nullable=True)
     position = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -95,6 +99,17 @@ class WeightHistory(db.Model):
 
     def __repr__(self):
         return f"<WeightHistory {self.id} workout={self.workout_id} {self.weight}kg on {self.date}>"
+
+
+class Routine(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(50), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Routine {self.id} user={self.user_id} name={self.name} pos={self.position}>"
 
 
 def log_weight(workout, weight_str):
@@ -163,7 +178,8 @@ def ensure_database():
             
             # Verifica e aggiungi colonna user_id se manca
             inspector = inspect(db.engine)
-            cols = [c["name"] for c in inspector.get_columns('workout')]
+            cols_info = inspector.get_columns('workout')
+            cols = [c["name"] for c in cols_info]
             
             if "user_id" not in cols:
                 print("→ Aggiungendo colonna user_id...")
@@ -207,7 +223,49 @@ def ensure_database():
                 db.session.execute(text("ALTER TABLE workout ADD COLUMN exercise_id VARCHAR(10)"))
                 db.session.commit()
                 print("✓ Colonna exercise_id aggiunta")
-            
+
+            # Allunga colonna day a VARCHAR(50) per nomi routine custom
+            if "day" in cols:
+                if db.engine.dialect.name == "sqlite":
+                    day_col = next((c for c in cols_info if c["name"] == "day"), None)
+                    type_str = str(day_col.get("type", "")) if day_col else ""
+                    if "VARCHAR(10)" in type_str or "String(10)" in type_str:
+                        try:
+                            db.session.execute(text("ALTER TABLE workout RENAME COLUMN day TO day_old"))
+                            db.session.execute(text("ALTER TABLE workout ADD COLUMN day VARCHAR(50)"))
+                            db.session.execute(text("UPDATE workout SET day = day_old"))
+                            db.session.execute(text("ALTER TABLE workout DROP COLUMN day_old"))
+                            db.session.commit()
+                            print("✓ Colonna day estesa a VARCHAR(50)")
+                        except Exception:
+                            db.session.rollback()
+                elif db.engine.dialect.name == "postgresql":
+                    try:
+                        db.session.execute(text("ALTER TABLE workout ALTER COLUMN day TYPE VARCHAR(50)"))
+                        db.session.commit()
+                        print("✓ Colonna day estesa a VARCHAR(50)")
+                    except Exception:
+                        db.session.rollback()
+
+            # Crea routine per utenti esistenti che non ne hanno
+            all_users = User.query.all()
+            for user in all_users:
+                if Routine.query.filter_by(user_id=user.id).count() == 0:
+                    existing_days = db.session.query(Workout.day).filter(
+                        Workout.user_id == user.id, Workout.day.isnot(None)
+                    ).distinct().all()
+                    if existing_days:
+                        for idx, (day_name,) in enumerate(sorted(existing_days)):
+                            routine = Routine(user_id=user.id, name=day_name, position=idx + 1)
+                            db.session.add(routine)
+                        print(f"  ✓ Create {len(existing_days)} routine per {user.username}")
+                    else:
+                        for idx, day_name in enumerate(["Day1", "Day2", "Day3", "Day4", "Day5"]):
+                            routine = Routine(user_id=user.id, name=day_name, position=idx + 1)
+                            db.session.add(routine)
+                        print(f"  ✓ Create 5 routine default per {user.username}")
+            db.session.commit()
+
             # Crea utente admin se non esiste
             default_user = User.query.filter_by(username='admin').first()
             admin_password = os.environ.get("ADMIN_PASSWORD")
@@ -263,16 +321,16 @@ def ensure_database():
                 db.session.commit()
                 print(f"✓ Workout originali rimossi")
             
-            # Backfill positions per day per ogni utente
+            # Backfill positions per routine per ogni utente
             print("→ Riorganizzando posizioni...")
-            days = ["Day1", "Day2", "Day3", "Day4", "Day5"]
             for user in all_users:
-                for day in days:
-                    rows = Workout.query.filter_by(day=day, user_id=user.id).order_by(Workout.created_at.asc(), Workout.date.asc()).all()
+                routines = Routine.query.filter_by(user_id=user.id).order_by(Routine.position.asc()).all()
+                for routine in routines:
+                    rows = Workout.query.filter_by(day=routine.name, user_id=user.id).order_by(Workout.created_at.asc(), Workout.date.asc()).all()
                     for idx, r in enumerate(rows, start=1):
                         if r.position != idx:
                             r.position = idx
-                    db.session.commit()
+                db.session.commit()
             print("✓ Posizioni riorganizzate")
             
         except Exception as e:
@@ -402,29 +460,6 @@ def register():
             user.set_password(form.password.data)
             
             db.session.add(user)
-            db.session.flush()  # Flush per ottenere l'ID senza commit
-            
-            # Assegna tutti i workout default a questo nuovo utente
-            admin_user = User.query.filter_by(username='admin').first()
-            if admin_user:
-                default_workouts = Workout.query.filter_by(user_id=admin_user.id).all()
-                
-                for wo in default_workouts:
-                    new_workout = Workout(
-                        user_id=user.id,
-                        date=wo.date,
-                        exercise=wo.exercise,
-                        exercise_id=wo.exercise_id,
-                        sets=wo.sets,
-                        reps=wo.reps,
-                        weight=wo.weight,
-                        notes=wo.notes,
-                        day=wo.day,
-                        position=wo.position,
-                        created_at=wo.created_at
-                    )
-                    db.session.add(new_workout)
-            
             db.session.commit()
             
             flash("✓ Registrazione completata! Accedi ora.", "success")
@@ -486,23 +521,24 @@ def landing():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    days = ["Day1", "Day2", "Day3", "Day4", "Day5"]
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
     day_groups = {}
-    for d in days:
-        workouts = Workout.query.filter_by(day=d, user_id=current_user.id).order_by(
+    for r in routines:
+        workouts = Workout.query.filter_by(day=r.name, user_id=current_user.id).order_by(
             func.coalesce(Workout.position, 9999).asc(), Workout.position.asc(), Workout.created_at.asc()
         ).all()
-        day_groups[d] = workouts
-    return render_template("index.html", day_groups=day_groups, days=days)
+        day_groups[r.name] = workouts
+    return render_template("index.html", day_groups=day_groups, routines=routines)
 
 
 @app.route("/day/<day_name>")
 @login_required
 def day_view(day_name):
+    routine = Routine.query.filter_by(name=day_name, user_id=current_user.id).first_or_404()
     workouts = Workout.query.filter_by(day=day_name, user_id=current_user.id).order_by(
         func.coalesce(Workout.position, 9999).asc(), Workout.position.asc(), Workout.created_at.asc()
     ).all()
-    return render_template("day_view.html", day_name=day_name, workouts=workouts)
+    return render_template("day_view.html", day_name=day_name, workouts=workouts, routine=routine)
 
 
 @app.route("/add", methods=["GET", "POST"])
@@ -568,7 +604,8 @@ def add_workout():
             return redirect(url_for("add_workout"))
 
     default_date = datetime.utcnow().date().isoformat()
-    return render_template("add_workout.html", default_date=default_date)
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    return render_template("add_workout.html", default_date=default_date, routines=routines)
 
 
 @app.route("/workout/<int:workout_id>")
@@ -662,7 +699,8 @@ def edit_workout(workout_id):
             flash(f"✗ Errore: {str(e)}", "danger")
             return redirect(url_for("edit_workout", workout_id=workout_id))
 
-    return render_template("edit_workout.html", w=w, exercise_id=w.exercise_id or "")
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    return render_template("edit_workout.html", w=w, exercise_id=w.exercise_id or "", routines=routines)
 
 
 @app.route("/delete/<int:workout_id>", methods=["POST"])
@@ -723,36 +761,97 @@ def update_weight(workout_id):
     return redirect(request.referrer or url_for("day_view", day_name=w.day))
 
 
-@app.route("/reorder-days-batch", methods=["POST"])
+# ============= ROUTES ROUTINES CRUD =============
+
+@app.route("/routines/add", methods=["POST"])
 @login_required
-def reorder_days_batch():
-    """Riordina i giorni con scorrimento corretto"""
+def add_routine():
     try:
-        data = request.get_json()
-        mapping = data.get('mapping', {})  # Es: {'Day3': 'Day1', 'Day1': 'Day2', 'Day2': 'Day3', ...}
-        
-        # Salva temporaneamente tutti i workout per ogni giorno
-        days_backup = {}
-        for day in ["Day1", "Day2", "Day3", "Day4", "Day5"]:
-            workouts = Workout.query.filter_by(day=day, user_id=current_user.id).all()
-            if workouts:
-                days_backup[day] = workouts
-        
-        # Applica la nuova mappatura usando il backup
-        for old_day, new_day in mapping.items():
-            if old_day in days_backup:
-                workouts = days_backup[old_day]
-                for wo in workouts:
-                    wo.day = new_day
-        
+        data = request.get_json() if request.is_json else None
+        if data:
+            name = data.get("name", "").strip()
+        else:
+            name = request.form.get("name", "").strip()
+
+        if not name:
+            return jsonify({"error": "Nome mancante"}), 400
+
+        max_pos = db.session.query(func.max(Routine.position)).filter(
+            Routine.user_id == current_user.id
+        ).scalar()
+        routine = Routine(user_id=current_user.id, name=name, position=(max_pos or 0) + 1)
+        db.session.add(routine)
         db.session.commit()
-        
-        return {'success': True, 'message': 'Giorni riordinati correttamente'}, 200
-    
+        return jsonify({"id": routine.id, "name": routine.name, "position": routine.position}), 201
     except Exception as e:
         db.session.rollback()
-        print(f"Reorder days error: {e}")
-        return {'success': False, 'error': str(e)}, 400
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/routines/rename/<int:routine_id>", methods=["POST"])
+@login_required
+def rename_routine(routine_id):
+    try:
+        routine = Routine.query.get_or_404(routine_id)
+        if routine.user_id != current_user.id:
+            return jsonify({"error": "Non hai accesso"}), 403
+
+        data = request.get_json() if request.is_json else None
+        if data:
+            new_name = data.get("name", "").strip()
+        else:
+            new_name = request.form.get("name", "").strip()
+
+        if not new_name:
+            return jsonify({"error": "Nome mancante"}), 400
+
+        old_name = routine.name
+        routine.name = new_name
+        # Aggiorna anche i workout associati
+        workouts = Workout.query.filter_by(day=old_name, user_id=current_user.id).all()
+        for w in workouts:
+            w.day = new_name
+        db.session.commit()
+        return jsonify({"id": routine.id, "name": routine.name})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/routines/delete/<int:routine_id>", methods=["POST"])
+@login_required
+def delete_routine(routine_id):
+    try:
+        routine = Routine.query.get_or_404(routine_id)
+        if routine.user_id != current_user.id:
+            return jsonify({"error": "Non hai accesso"}), 403
+
+        day_name = routine.name
+        db.session.delete(routine)
+        # Rimuovi anche i workout associati
+        Workout.query.filter_by(day=day_name, user_id=current_user.id).delete()
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/routines/reorder", methods=["POST"])
+@login_required
+def reorder_routines():
+    try:
+        data = request.get_json()
+        order = data.get("order", [])
+        for item in order:
+            routine = Routine.query.filter_by(id=item["id"], user_id=current_user.id).first()
+            if routine:
+                routine.position = item["position"]
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
 
 
 # ============= ROUTES STATS =============
@@ -760,10 +859,10 @@ def reorder_days_batch():
 @app.route("/stats")
 @login_required
 def stats():
-    days = ["Day1", "Day2", "Day3", "Day4", "Day5"]
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
     day_stats = {}
-    for d in days:
-        workouts = Workout.query.filter_by(day=d, user_id=current_user.id).order_by(Workout.position.asc()).all()
+    for r in routines:
+        workouts = Workout.query.filter_by(day=r.name, user_id=current_user.id).order_by(Workout.position.asc()).all()
         exercises = []
         for wo in workouts:
             latest = WeightHistory.query.filter_by(workout_id=wo.id, user_id=current_user.id).order_by(WeightHistory.date.desc(), WeightHistory.id.desc()).first()
@@ -783,8 +882,8 @@ def stats():
                 "pr_date": pr.date if pr else None,
                 "total_entries": count,
             })
-        day_stats[d] = exercises
-    return render_template("stats.html", day_stats=day_stats, days=days, now_date=datetime.utcnow().date().isoformat())
+        day_stats[r.name] = exercises
+    return render_template("stats.html", day_stats=day_stats, routines=routines, now_date=datetime.utcnow().date().isoformat())
 
 
 @app.route("/api/weight-history/<int:workout_id>")
