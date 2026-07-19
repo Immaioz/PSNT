@@ -46,6 +46,9 @@
         </h1>
         <small class="text-muted"><i class="bi bi-graph-up"></i> Statistiche</small>
     </div>
+    <a href="{{ url_for('friend_routines', user_id=target.id) }}" class="btn btn-outline-primary">
+        <i class="bi bi-calendar-check"></i> Routine
+    </a>
 </div>
 
 {% if routines|length > 0 %}

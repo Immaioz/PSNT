@@ -1059,6 +1059,90 @@ def friend_stats(user_id):
     return render_template("friend_stats.html", target=target, routine_stats=routine_stats, routines=routines)
 
 
+@app.route("/friend-routines/<int:user_id>")
+@login_required
+def friend_routines(user_id):
+    target = db.session.get(User, user_id)
+    if not target:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("notifications"))
+
+    f = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
+        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).first()
+
+    if not f:
+        flash("✗ Puoi vedere le routine solo degli amici accettati.", "danger")
+        return redirect(url_for("notifications"))
+
+    routines = Routine.query.filter_by(user_id=target.id).order_by(Routine.position.asc()).all()
+    routine_data = []
+    for r in routines:
+        exercises = RoutineExercise.query.filter_by(routine_id=r.id).order_by(RoutineExercise.position.asc()).all()
+        session_count = RoutineSession.query.filter_by(routine_id=r.id, user_id=target.id).count()
+        routine_data.append({
+            "routine": r,
+            "exercises": exercises,
+            "session_count": session_count,
+        })
+
+    return render_template("friend_routines.html", target=target, routine_data=routine_data)
+
+
+@app.route("/import-routine/<int:user_id>/<int:routine_id>", methods=["POST"])
+@login_required
+def import_routine(user_id, routine_id):
+    target = db.session.get(User, user_id)
+    if not target:
+        flash("✗ Utente non trovato.", "danger")
+        return redirect(url_for("notifications"))
+
+    f = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == user_id)) |
+        ((Friendship.requester_id == user_id) & (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).first()
+
+    if not f:
+        flash("✗ Non hai accesso.", "danger")
+        return redirect(url_for("notifications"))
+
+    source_routine = db.session.get(Routine, routine_id)
+    if not source_routine or source_routine.user_id != target.id:
+        flash("✗ Routine non valida.", "danger")
+        return redirect(url_for("friend_routines", user_id=user_id))
+
+    source_exercises = RoutineExercise.query.filter_by(routine_id=routine_id).order_by(RoutineExercise.position.asc()).all()
+
+    my_position = Routine.query.filter_by(user_id=current_user.id).count() + 1
+    new_routine = Routine(
+        user_id=current_user.id,
+        name=f"{source_routine.name} (da {target.username})",
+        position=my_position,
+    )
+    db.session.add(new_routine)
+    db.session.flush()
+
+    for i, re in enumerate(source_exercises):
+        new_ex = RoutineExercise(
+            routine_id=new_routine.id,
+            user_id=current_user.id,
+            exercise=re.exercise,
+            exercise_id=re.exercise_id,
+            default_sets=re.default_sets,
+            default_reps=re.default_reps,
+            notes=re.notes,
+            position=i + 1,
+        )
+        db.session.add(new_ex)
+
+    db.session.commit()
+    flash(f"✓ Routine '{source_routine.name}' importata con successo!", "success")
+    return redirect(url_for("dashboard"))
+
+
 # ============= ROUTES DASHBOARD =============
 
 @app.route("/")
