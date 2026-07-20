@@ -1640,6 +1640,47 @@ def update_superset_group(session_id, superset_id):
     return redirect(url_for("session_view", session_id=session_id))
 
 
+@app.route("/session/<int:session_id>/save-all", methods=["POST"])
+@login_required
+def save_session_workouts(session_id):
+    session = RoutineSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        return jsonify({"error": "Accesso negato"}), 403
+
+    data = request.get_json()
+    if not data or "workouts" not in data:
+        return jsonify({"error": "Dati mancanti"}), 400
+
+    updated = 0
+    for item in data["workouts"]:
+        w = Workout.query.get(item.get("id"))
+        if not w or w.session_id != session.id or w.user_id != current_user.id:
+            continue
+
+        weight = (item.get("weight") or "").strip()
+        sets = (item.get("sets") or "").strip()
+        reps = (item.get("reps") or "").strip()
+
+        old_weight = w.weight
+        w.weight = weight if weight else None
+        if sets and sets.isdigit():
+            w.sets = int(sets)
+        elif sets == "":
+            w.sets = None
+        if reps:
+            w.reps = reps
+        elif reps == "":
+            w.reps = None
+
+        if weight and weight != old_weight:
+            log_weight(w, weight)
+
+        updated += 1
+
+    db.session.commit()
+    return jsonify({"success": True, "updated": updated})
+
+
 @app.route("/session/<int:session_id>/workout/<int:workout_id>/delete", methods=["POST"])
 @login_required
 def delete_session_workout(session_id, workout_id):

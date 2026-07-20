@@ -44,6 +44,16 @@
         margin: 0;
         white-space: nowrap;
     }
+    .btn-save-all {
+        background: linear-gradient(135deg, #059669, #10b981);
+        color: #fff; border: none; font-weight: 600;
+    }
+    .btn-save-all:hover { background: linear-gradient(135deg, #047857, #059669); color: #fff; }
+    .saved-indicator {
+        opacity: 0; transition: opacity .3s;
+        font-size: .75rem; color: #059669; font-weight: 600;
+    }
+    .saved-indicator.show { opacity: 1; }
 </style>
 {% endblock %}
 
@@ -56,10 +66,14 @@
         </h1>
         <small class="text-muted">{{ session.date.strftime('%d/%m/%Y') }}</small>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center">
+        <span class="saved-indicator" id="savedIndicator"><i class="bi bi-check-circle"></i> Salvato!</span>
+        <button type="button" class="btn btn-save-all" id="saveAllBtn" onclick="saveAllAndRedirect()">
+            <i class="bi bi-check-lg"></i> Salva e Concludi
+        </button>
         <form method="POST" action="{{ url_for('delete_session', session_id=session.id) }}">
             <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Eliminare questa sessione?')">
-                <i class="bi bi-trash"></i> Elimina Sessione
+                <i class="bi bi-trash"></i>
             </button>
         </form>
     </div>
@@ -84,14 +98,14 @@
 
                 <div class="superset-shared">
                     <form method="POST" action="{{ url_for('update_superset_group', session_id=session.id, superset_id=w.superset_id) }}" class="d-flex align-items-center gap-2 flex-wrap">
-                        <label>Set x Reps:</label>
+                        <label>Set x Reps (gruppo):</label>
                         <div class="sets-reps-ctrl d-flex gap-1">
                             <input type="number" name="sets" value="{{ first_w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
                             <span class="text-muted">x</span>
                             <input type="text" name="reps" value="{{ first_w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
                         </div>
-                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Salva Set/Reps">
-                            <i class="bi bi-check-lg"></i> Salva
+                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Salva Set/Reps gruppo">
+                            <i class="bi bi-check-lg"></i> Gruppo
                         </button>
                     </form>
                 </div>
@@ -105,22 +119,17 @@
                             <a href="{{ url_for('view_workout', workout_id=gw.id) }}" class="text-decoration-none" style="color:var(--text-color);">
                                 <h6 class="mb-1 fw-semibold">{{ gd.name_it }}{% if gw.exercise_id %} <span class="badge bg-success" style="font-size:.5rem;"><i class="bi bi-book"></i></span>{% endif %}</h6>
                             </a>
-                            <div class="d-flex align-items-center gap-2">
-                                <form method="POST" action="{{ url_for('update_session_workout', session_id=session.id, workout_id=gw.id) }}" class="d-flex align-items-center gap-2 flex-wrap">
-                                    <div class="weight-ctrl">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
-                                        <input type="text" name="weight" value="{{ gw.weight or '' }}" placeholder="kg">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary btn-sm" title="Salva">
-                                        <i class="bi bi-check-lg"></i>
-                                    </button>
-                                </form>
-                                <form method="POST" action="{{ url_for('delete_session_workout', session_id=session.id, workout_id=gw.id) }}" style="display:inline;">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio dalla sessione?')" title="Rimuovi">
-                                        <i class="bi bi-x-lg"></i>
-                                    </button>
-                                </form>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <div class="sets-reps-ctrl d-flex gap-1">
+                                    <input type="number" data-field="sets" data-id="{{ gw.id }}" value="{{ gw.sets or '' }}" placeholder="Set" class="form-control form-control-sm" style="width:45px;">
+                                    <span class="text-muted">x</span>
+                                    <input type="text" data-field="reps" data-id="{{ gw.id }}" value="{{ gw.reps or '' }}" placeholder="Reps" class="form-control form-control-sm" style="width:50px;">
+                                </div>
+                                <div class="weight-ctrl">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
+                                    <input type="text" data-field="weight" data-id="{{ gw.id }}" value="{{ gw.weight or '' }}" placeholder="kg">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -136,27 +145,17 @@
                     <a href="{{ url_for('view_workout', workout_id=w.id) }}" class="text-decoration-none" style="color:var(--text-color);">
                         <h6 class="mb-1 fw-semibold">{{ wd.name_it }}{% if w.exercise_id %} <span class="badge bg-success" style="font-size:.5rem;"><i class="bi bi-book"></i></span>{% endif %}</h6>
                     </a>
-                    <div class="d-flex align-items-center gap-2">
-                        <form method="POST" action="{{ url_for('update_session_workout', session_id=session.id, workout_id=w.id) }}" class="d-flex align-items-center gap-2 flex-wrap">
-                            <div class="sets-reps-ctrl d-flex gap-1">
-                                <input type="number" name="sets" value="{{ w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
-                                <span class="text-muted">x</span>
-                                <input type="text" name="reps" value="{{ w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
-                            </div>
-                            <div class="weight-ctrl">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
-                                <input type="text" name="weight" value="{{ w.weight or '' }}" placeholder="kg">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
-                            </div>
-                            <button type="submit" class="btn btn-primary btn-sm" title="Salva">
-                                <i class="bi bi-check-lg"></i>
-                            </button>
-                        </form>
-                        <form method="POST" action="{{ url_for('delete_session_workout', session_id=session.id, workout_id=w.id) }}" style="display:inline;">
-                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Rimuovere questo esercizio dalla sessione?')" title="Rimuovi">
-                                <i class="bi bi-x-lg"></i>
-                            </button>
-                        </form>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <div class="sets-reps-ctrl d-flex gap-1">
+                            <input type="number" data-field="sets" data-id="{{ w.id }}" value="{{ w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
+                            <span class="text-muted">x</span>
+                            <input type="text" data-field="reps" data-id="{{ w.id }}" value="{{ w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
+                        </div>
+                        <div class="weight-ctrl">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
+                            <input type="text" data-field="weight" data-id="{{ w.id }}" value="{{ w.weight or '' }}" placeholder="kg">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -176,13 +175,54 @@
 {% block extra_js %}
 <script>
 function adjustWeight(btn, delta) {
-    const form = btn.closest('form');
-    const input = form.querySelector('input[name="weight"]');
+    const row = btn.closest('.workout-row, .superset-exercises');
+    const input = row ? row.querySelector('input[data-field="weight"]') : btn.closest('form').querySelector('input[name="weight"]');
+    if (!input) return;
     let val = parseFloat(input.value) || 0;
     val = Math.round((val + delta) * 10) / 10;
     if (val <= 0) val = '';
     input.value = val;
-    form.submit();
+}
+
+function collectWorkouts() {
+    const workouts = [];
+    document.querySelectorAll('input[data-field]').forEach(input => {
+        const id = input.dataset.id;
+        const field = input.dataset.field;
+        let existing = workouts.find(w => w.id == id);
+        if (!existing) {
+            existing = {id: id, weight: '', sets: '', reps: ''};
+            workouts.push(existing);
+        }
+        existing[field] = input.value;
+    });
+    return workouts;
+}
+
+function saveAllAndRedirect() {
+    const btn = document.getElementById('saveAllBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...';
+
+    fetch('{{ url_for("save_session_workouts", session_id=session.id) }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({workouts: collectWorkouts()})
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            const indicator = document.getElementById('savedIndicator');
+            indicator.classList.add('show');
+            setTimeout(() => { window.location.href = '{{ url_for("dashboard") }}'; }, 500);
+        } else {
+            alert('Errore: ' + (data.error || 'sconosciuto'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Salva e Concludi';
+        }
+    }).catch(() => {
+        alert('Errore di rete.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> Salva e Concludi';
+    });
 }
 </script>
 {% endblock %}
