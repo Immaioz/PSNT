@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
@@ -6,6 +6,7 @@ from wtforms import StringField, PasswordField, BooleanField, SubmitField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import time
 from pathlib import Path
 import json
 import os
@@ -244,8 +245,15 @@ def load_user(user_id):
 @app.context_processor
 def inject_pending_requests():
     if current_user.is_authenticated:
-        count = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").count()
-        return dict(pending_requests_count=count)
+        last_check = session.get("pending_check_time", 0)
+        cached_count = session.get("pending_count", 0)
+        now = time.time()
+        if now - last_check > 60:
+            count = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").count()
+            session["pending_count"] = count
+            session["pending_check_time"] = now
+            return dict(pending_requests_count=count)
+        return dict(pending_requests_count=cached_count)
     return dict(pending_requests_count=0)
 
 
@@ -461,10 +469,17 @@ def _create_default_routines(user):
 EXERCISES_DATA = []
 EXERCISES_BY_ID = {}
 EXERCISES_TRANSLATIONS = {}
+EXERCISE_NAME_CACHE = {}
+EXERCISE_BP_CACHE = {}
+EXERCISE_TARGET_CACHE = {}
+EXERCISE_EQ_CACHE = {}
+EXERCISES_BY_BODY_PART = {}
 
 
 def load_exercises():
     global EXERCISES_DATA, EXERCISES_BY_ID, EXERCISES_TRANSLATIONS
+    global EXERCISE_NAME_CACHE, EXERCISE_BP_CACHE, EXERCISE_TARGET_CACHE, EXERCISE_EQ_CACHE
+    global EXERCISES_BY_BODY_PART
     base = os.path.join(BASE_DIR, "static", "exercises")
     try:
         with open(os.path.join(base, "exercises.json"), "r", encoding="utf-8") as f:
@@ -476,26 +491,39 @@ def load_exercises():
     try:
         with open(os.path.join(base, "translations_it.json"), "r", encoding="utf-8") as f:
             EXERCISES_TRANSLATIONS = json.load(f)
-        print(f"Loaded Italian translations")
+        names_it = EXERCISES_TRANSLATIONS.get("names_it", {})
+        body_parts = EXERCISES_TRANSLATIONS.get("body_part", {})
+        targets = EXERCISES_TRANSLATIONS.get("target", {})
+        equip = EXERCISES_TRANSLATIONS.get("equipment", {})
+        for ex in EXERCISES_DATA:
+            en = ex["name"]
+            EXERCISE_NAME_CACHE[en] = names_it.get(en.lower(), en)
+            bp = ex.get("body_part", "")
+            EXERCISE_BP_CACHE[bp] = body_parts.get(bp.lower(), bp)
+            EXERCISES_BY_BODY_PART.setdefault(bp.lower(), []).append(ex)
+            tgt = ex.get("target", "")
+            EXERCISE_TARGET_CACHE[tgt] = targets.get(tgt.lower(), tgt)
+            eq = ex.get("equipment", "")
+            EXERCISE_EQ_CACHE[eq] = equip.get(eq.lower(), eq)
+        print(f"Loaded Italian translations ({len(names_it)} names)")
     except Exception as e:
         print(f"Warning: could not load Italian translations: {e}")
 
 
 def get_exercise_name_it(ex):
-    names_it = EXERCISES_TRANSLATIONS.get("names_it", {})
-    return names_it.get(ex["name"].lower(), ex["name"])
+    return EXERCISE_NAME_CACHE.get(ex["name"], ex["name"])
 
 
 def get_body_part_it(bp):
-    return EXERCISES_TRANSLATIONS.get("body_part", {}).get(bp.lower(), bp)
+    return EXERCISE_BP_CACHE.get(bp, bp)
 
 
 def get_target_it(tgt):
-    return EXERCISES_TRANSLATIONS.get("target", {}).get(tgt.lower(), tgt)
+    return EXERCISE_TARGET_CACHE.get(tgt, tgt)
 
 
 def get_equipment_it(eq):
-    return EXERCISES_TRANSLATIONS.get("equipment", {}).get(eq.lower(), eq)
+    return EXERCISE_EQ_CACHE.get(eq, eq)
 
 
 def _resolve_exercise_name(exercise, exercise_id):
@@ -517,17 +545,17 @@ def search_exercises():
 
     results = EXERCISES_DATA
 
-    if q:
-        if q.startswith("*"):
-            bp_query = q[1:].strip()
-            if bp_query:
-                results = [e for e in results if bp_query in e.get("body_part", "").lower() or bp_query in get_body_part_it(e.get("body_part", "")).lower()]
-        else:
-            results = [e for e in results if q in e["name"].lower() or q in get_exercise_name_it(e).lower()]
     if body_part:
-        results = [e for e in results if e.get("body_part", "").lower() == body_part]
+        results = EXERCISES_BY_BODY_PART.get(body_part, [])
+    elif q and q.startswith("*"):
+        bp_query = q[1:].strip()
+        if bp_query:
+            results = [e for e in results if bp_query in e.get("body_part", "").lower() or bp_query in EXERCISE_BP_CACHE.get(e.get("body_part", ""), "").lower()]
+    elif q:
+        results = [e for e in results if q in e["name"].lower() or q in EXERCISE_NAME_CACHE.get(e["name"], e["name"]).lower()]
+
     if equipment:
-        results = [e for e in results if e.get("equipment", "").lower() == equipment]
+        results = [r for r in results if r.get("equipment", "").lower() == equipment]
 
     return jsonify([{
         "id": e["id"],
@@ -676,27 +704,36 @@ def admin_panel():
         return redirect(url_for("dashboard"))
 
     users = User.query.order_by(User.created_at.desc()).all()
-    user_data = []
-    for u in users:
-        routines_count = Routine.query.filter_by(user_id=u.id).count()
-        sessions_count = RoutineSession.query.filter_by(user_id=u.id).count()
-        workouts_count = Workout.query.filter_by(user_id=u.id).count()
-        friendships_count = Friendship.query.filter(
-            ((Friendship.requester_id == u.id) | (Friendship.receiver_id == u.id)),
-            Friendship.status == "accepted"
-        ).count()
-        user_data.append({
-            "user": u,
-            "routines": routines_count,
-            "sessions": sessions_count,
-            "workouts": workouts_count,
-            "friends": friendships_count,
-        })
+    if not users:
+        return render_template("admin.html", user_data=[], total_users=0, total_sessions=0, total_workouts=0, total_friendships=0)
+
+    user_ids = [u.id for u in users]
+
+    routine_counts = dict(db.session.query(Routine.user_id, func.count(Routine.id)).filter(Routine.user_id.in_(user_ids)).group_by(Routine.user_id).all())
+    session_counts = dict(db.session.query(RoutineSession.user_id, func.count(RoutineSession.id)).filter(RoutineSession.user_id.in_(user_ids)).group_by(RoutineSession.user_id).all())
+    workout_counts = dict(db.session.query(Workout.user_id, func.count(Workout.id)).filter(Workout.user_id.in_(user_ids)).group_by(Workout.user_id).all())
+
+    friendship_data = db.session.query(
+        db.case((Friendship.requester_id.in_(user_ids), Friendship.requester_id), else_=Friendship.receiver_id).label("uid"),
+        func.count(Friendship.id)
+    ).filter(
+        ((Friendship.requester_id.in_(user_ids)) | (Friendship.receiver_id.in_(user_ids))),
+        Friendship.status == "accepted"
+    ).group_by("uid").all()
+    friendship_counts = {row.uid: row[1] for row in friendship_data}
+
+    user_data = [{
+        "user": u,
+        "routines": routine_counts.get(u.id, 0),
+        "sessions": session_counts.get(u.id, 0),
+        "workouts": workout_counts.get(u.id, 0),
+        "friends": friendship_counts.get(u.id, 0),
+    } for u in users]
 
     total_users = len(users)
-    total_sessions = RoutineSession.query.count()
-    total_workouts = Workout.query.count()
-    total_friendships = Friendship.query.filter_by(status="accepted").count()
+    total_sessions = sum(session_counts.values()) if session_counts else 0
+    total_workouts = sum(workout_counts.values()) if workout_counts else 0
+    total_friendships = sum(friendship_counts.values()) if friendship_counts else 0
 
     return render_template("admin.html",
                            user_data=user_data,
@@ -902,12 +939,13 @@ def search_users():
             results = users
 
     friendships = {}
-    for u in results:
-        f = Friendship.query.filter(
-            ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == u.id)) |
-            ((Friendship.requester_id == u.id) & (Friendship.receiver_id == current_user.id))
-        ).first()
-        friendships[u.id] = f
+    if results:
+        result_ids = [u.id for u in results]
+        existing = Friendship.query.filter(
+            ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id.in_(result_ids))) |
+            ((Friendship.requester_id.in_(result_ids)) & (Friendship.receiver_id == current_user.id))
+        ).all()
+        friendships = {f.receiver_id if f.requester_id == current_user.id else f.requester_id: f for f in existing}
 
     return render_template("search.html", results=results, query=query, friendships=friendships)
 
@@ -1002,17 +1040,18 @@ def notifications():
     received = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").all()
     sent = Friendship.query.filter_by(requester_id=current_user.id, status="pending").all()
 
-    received_users = []
-    for f in received:
-        u = db.session.get(User, f.requester_id)
-        if u:
-            received_users.append({"friendship": f, "user": u})
+    received_user_ids = [f.requester_id for f in received]
+    sent_user_ids = [f.receiver_id for f in sent]
 
-    sent_users = []
-    for f in sent:
-        u = db.session.get(User, f.receiver_id)
-        if u:
-            sent_users.append({"friendship": f, "user": u})
+    all_user_ids = set(received_user_ids + sent_user_ids)
+    users_by_id = {}
+    if all_user_ids:
+        for u in User.query.filter(User.id.in_(all_user_ids)).all():
+            users_by_id[u.id] = u
+
+    received_users = [{"friendship": f, "user": users_by_id[f.requester_id]} for f in received if f.requester_id in users_by_id]
+
+    sent_users = [{"friendship": f, "user": users_by_id[f.receiver_id]} for f in sent if f.receiver_id in users_by_id]
 
     return render_template("notifications.html",
                            received=received_users, sent=sent_users)
@@ -1026,10 +1065,17 @@ def friends_list():
         Friendship.status == "accepted"
     ).all()
 
+    friend_ids = set()
+    for f in friends:
+        uid = f.receiver_id if f.requester_id == current_user.id else f.requester_id
+        friend_ids.add(uid)
+
+    users_by_id = {u.id: u for u in User.query.filter(User.id.in_(friend_ids)).all()} if friend_ids else {}
+
     friend_users = []
     for f in friends:
         uid = f.receiver_id if f.requester_id == current_user.id else f.requester_id
-        u = db.session.get(User, uid)
+        u = users_by_id.get(uid)
         if u:
             friend_users.append({"friendship": f, "user": u})
 
@@ -1054,18 +1100,39 @@ def friend_stats(token):
         flash("✗ Puoi vedere le stats solo degli amici accettati.", "danger")
         return redirect(url_for("friends_list"))
 
-    routines = Routine.query.filter_by(user_id=target.id).order_by(Routine.position.asc()).all()
+    uid = target.id
+    routines = Routine.query.filter_by(user_id=uid).order_by(Routine.position.asc()).all()
+    if not routines:
+        return render_template("friend_stats.html", target=target, routine_stats={}, routines=[])
+
+    routine_ids = [r.id for r in routines]
+
+    ex_by_routine = {}
+    for re in RoutineExercise.query.filter(RoutineExercise.routine_id.in_(routine_ids)).order_by(RoutineExercise.position.asc()).all():
+        ex_by_routine.setdefault(re.routine_id, []).append(re)
+
+    sessions = RoutineSession.query.filter(
+        RoutineSession.routine_id.in_(routine_ids),
+        RoutineSession.user_id == uid
+    ).order_by(RoutineSession.date.desc()).all()
+
+    session_ids = [s.id for s in sessions]
+    all_workouts = Workout.query.filter(Workout.session_id.in_(session_ids), Workout.user_id == uid).all()
+
+    wo_lookup = {}
+    for wo in all_workouts:
+        wo_lookup.setdefault(wo.session_id, {})[wo.exercise] = wo
+
     routine_stats = {}
-
     for r in routines:
-        template_exercises = RoutineExercise.query.filter_by(routine_id=r.id).order_by(RoutineExercise.position.asc()).all()
-        sessions = RoutineSession.query.filter_by(routine_id=r.id, user_id=target.id).order_by(RoutineSession.date.desc()).all()
-        exercise_stats = []
-
+        template_exercises = ex_by_routine.get(r.id, [])
+        ex_stats = []
         for re in template_exercises:
             session_workouts = []
             for s in sessions:
-                wo = Workout.query.filter_by(session_id=s.id, exercise=re.exercise, user_id=target.id).first()
+                if s.routine_id != r.id:
+                    continue
+                wo = wo_lookup.get(s.id, {}).get(re.exercise)
                 if wo:
                     session_workouts.append((s, wo))
 
@@ -1090,7 +1157,7 @@ def friend_stats(token):
                 except (ValueError, AttributeError):
                     pass
 
-            exercise_stats.append({
+            ex_stats.append({
                 "routine_exercise": re,
                 "name_it": _resolve_exercise_name(re.exercise, re.exercise_id),
                 "latest_weight": latest_weight,
@@ -1100,8 +1167,8 @@ def friend_stats(token):
                 "total_sessions": len(session_workouts),
             })
 
-        if exercise_stats:
-            routine_stats[r.name] = exercise_stats
+        if ex_stats:
+            routine_stats[r.name] = ex_stats
 
     return render_template("friend_stats.html", target=target, routine_stats=routine_stats, routines=routines)
 
@@ -1125,14 +1192,29 @@ def friend_routines(token):
         return redirect(url_for("friends_list"))
 
     routines = Routine.query.filter_by(user_id=target.id).order_by(Routine.position.asc()).all()
+    if not routines:
+        return render_template("friend_routines.html", target=target, routine_data=[])
+
+    routine_ids = [r.id for r in routines]
+
+    ex_by_routine = {}
+    for re in RoutineExercise.query.filter(RoutineExercise.routine_id.in_(routine_ids)).order_by(RoutineExercise.position.asc()).all():
+        ex_by_routine.setdefault(re.routine_id, []).append(re)
+
+    count_by_routine = dict(
+        db.session.query(
+            RoutineSession.routine_id,
+            func.count(RoutineSession.id)
+        ).filter(RoutineSession.routine_id.in_(routine_ids), RoutineSession.user_id == target.id
+        ).group_by(RoutineSession.routine_id).all()
+    )
+
     routine_data = []
     for r in routines:
-        exercises = RoutineExercise.query.filter_by(routine_id=r.id).order_by(RoutineExercise.position.asc()).all()
-        session_count = RoutineSession.query.filter_by(routine_id=r.id, user_id=target.id).count()
         routine_data.append({
             "routine": r,
-            "exercises": exercises,
-            "session_count": session_count,
+            "exercises": ex_by_routine.get(r.id, []),
+            "session_count": count_by_routine.get(r.id, 0),
         })
 
     return render_template("friend_routines.html", target=target, routine_data=routine_data)
@@ -1235,16 +1317,44 @@ def landing():
 @login_required
 def dashboard():
     routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    if not routines:
+        return render_template("index.html", routine_data=[])
+
+    routine_ids = [r.id for r in routines]
+
+    ex_by_routine = {}
+    for re in RoutineExercise.query.filter(RoutineExercise.routine_id.in_(routine_ids)).order_by(RoutineExercise.position.asc()).all():
+        ex_by_routine.setdefault(re.routine_id, []).append(re)
+
+    last_session_subq = db.session.query(
+        RoutineSession.routine_id,
+        func.max(RoutineSession.date).label("max_date")
+    ).filter(RoutineSession.routine_id.in_(routine_ids), RoutineSession.user_id == current_user.id
+    ).group_by(RoutineSession.routine_id).subquery()
+
+    count_by_routine = dict(
+        db.session.query(
+            RoutineSession.routine_id,
+            func.count(RoutineSession.id)
+        ).filter(RoutineSession.routine_id.in_(routine_ids), RoutineSession.user_id == current_user.id
+        ).group_by(RoutineSession.routine_id).all()
+    )
+
+    last_dates = dict(
+        db.session.query(RoutineSession.routine_id, RoutineSession.date).join(
+            last_session_subq,
+            (RoutineSession.routine_id == last_session_subq.c.routine_id) &
+            (RoutineSession.date == last_session_subq.c.max_date)
+        ).filter(RoutineSession.user_id == current_user.id).all()
+    )
+
     routine_data = []
     for r in routines:
-        exercises = RoutineExercise.query.filter_by(routine_id=r.id).order_by(RoutineExercise.position.asc()).all()
-        last_session = RoutineSession.query.filter_by(routine_id=r.id, user_id=current_user.id).order_by(RoutineSession.date.desc()).first()
-        session_count = RoutineSession.query.filter_by(routine_id=r.id, user_id=current_user.id).count()
         routine_data.append({
             "routine": r,
-            "exercises": exercises,
-            "last_session": last_session,
-            "session_count": session_count,
+            "exercises": ex_by_routine.get(r.id, []),
+            "last_session": last_dates.get(r.id),
+            "session_count": count_by_routine.get(r.id, 0),
         })
     return render_template("index.html", routine_data=routine_data)
 
@@ -1763,17 +1873,43 @@ def view_workout(workout_id):
 @login_required
 def stats():
     routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    if not routines:
+        return render_template("stats.html", routine_stats={}, routines=[])
+
+    routine_ids = [r.id for r in routines]
+
+    exercises_by_routine = {}
+    for re in RoutineExercise.query.filter(RoutineExercise.routine_id.in_(routine_ids)).order_by(RoutineExercise.position.asc()).all():
+        exercises_by_routine.setdefault(re.routine_id, []).append(re)
+
+    sessions = RoutineSession.query.filter(
+        RoutineSession.routine_id.in_(routine_ids),
+        RoutineSession.user_id == current_user.id
+    ).order_by(RoutineSession.date.desc()).all()
+
+    session_ids = [s.id for s in sessions]
+
+    all_workouts = Workout.query.filter(
+        Workout.session_id.in_(session_ids),
+        Workout.user_id == current_user.id
+    ).all()
+
+    workout_lookup = {}
+    for wo in all_workouts:
+        workout_lookup.setdefault(wo.session_id, {})[wo.exercise] = wo
+
+    session_by_id = {s.id: s for s in sessions}
+
     routine_stats = {}
-
     for r in routines:
-        template_exercises = RoutineExercise.query.filter_by(routine_id=r.id).order_by(RoutineExercise.position.asc()).all()
-        sessions = RoutineSession.query.filter_by(routine_id=r.id, user_id=current_user.id).order_by(RoutineSession.date.desc()).all()
-        exercise_stats = []
-
+        template_exercises = exercises_by_routine.get(r.id, [])
+        ex_stats = []
         for re in template_exercises:
             session_workouts = []
             for s in sessions:
-                wo = Workout.query.filter_by(session_id=s.id, exercise=re.exercise, user_id=current_user.id).first()
+                if s.routine_id != r.id:
+                    continue
+                wo = workout_lookup.get(s.id, {}).get(re.exercise)
                 if wo:
                     session_workouts.append((s, wo))
 
@@ -1798,7 +1934,7 @@ def stats():
                 except (ValueError, AttributeError):
                     pass
 
-            exercise_stats.append({
+            ex_stats.append({
                 "routine_exercise": re,
                 "name_it": _resolve_exercise_name(re.exercise, re.exercise_id),
                 "latest_weight": latest_weight,
@@ -1808,7 +1944,8 @@ def stats():
                 "total_sessions": len(session_workouts),
             })
 
-        routine_stats[r.name] = exercise_stats
+        if ex_stats:
+            routine_stats[r.name] = ex_stats
 
     return render_template("stats.html", routine_stats=routine_stats, routines=routines)
 
@@ -1847,15 +1984,29 @@ def routine_exercise_history(routine_id):
     exercise_name = request.args.get("exercise", "").strip()
     exercise_id = request.args.get("exercise_id", "").strip() or None
     sessions = RoutineSession.query.filter_by(routine_id=routine.id, user_id=owner_id).order_by(RoutineSession.date.asc()).all()
+    if not sessions:
+        return jsonify([])
+
+    session_ids = [s.id for s in sessions]
+    all_workouts = Workout.query.filter(
+        Workout.session_id.in_(session_ids),
+        Workout.user_id == owner_id
+    ).all()
+
+    wo_by_session = {}
+    for wo in all_workouts:
+        wo_by_session[wo.session_id] = wo
 
     data = []
     for s in sessions:
-        wo = None
-        if exercise_id:
-            wo = Workout.query.filter_by(session_id=s.id, exercise_id=exercise_id, user_id=owner_id).first()
+        wo = wo_by_session.get(s.id)
         if not wo:
-            wo = Workout.query.filter_by(session_id=s.id, exercise=exercise_name, user_id=owner_id).first()
-        if wo and wo.weight:
+            continue
+        if exercise_id and wo.exercise_id != exercise_id:
+            continue
+        if not exercise_id and wo.exercise != exercise_name:
+            continue
+        if wo.weight:
             try:
                 w_val = float(wo.weight.replace(",", "."))
                 data.append({"date": s.date.strftime('%d/%m/%Y'), "weight": w_val})
