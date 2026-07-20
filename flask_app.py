@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+﻿from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
@@ -263,7 +263,7 @@ def ensure_database():
     with app.app_context():
         try:
             db.create_all()
-            print("✓ Database tables created/verified")
+            print("[OK] Database tables created/verified")
 
             inspector = inspect(db.engine)
             existing_tables = inspector.get_table_names()
@@ -273,18 +273,18 @@ def ensure_database():
                 cols = [c["name"] for c in cols_info]
 
                 if "session_id" not in cols:
-                    print("→ Aggiungendo colonna session_id a workout...")
+                    print("-> Aggiungendo colonna session_id a workout...")
                     db.session.execute(text("ALTER TABLE workout ADD COLUMN session_id INTEGER"))
                     db.session.commit()
-                    print("✓ Colonna session_id aggiunta")
+                    print("[OK] Colonna session_id aggiunta")
 
                 if "superset_id" not in cols:
                     db.session.execute(text("ALTER TABLE workout ADD COLUMN superset_id INTEGER"))
                     db.session.commit()
-                    print("✓ Colonna superset_id aggiunta a workout")
+                    print("[OK] Colonna superset_id aggiunta a workout")
 
                 if "day" in cols:
-                    print("→ Migrazione dati workout -> RoutineExercise/RoutineSession...")
+                    print("-> Migrazione dati workout -> RoutineExercise/RoutineSession...")
                     _migrate_old_workouts(cols)
 
             if 'routine_exercise' in existing_tables:
@@ -292,47 +292,47 @@ def ensure_database():
                 if "superset_id" not in re_cols:
                     db.session.execute(text("ALTER TABLE routine_exercise ADD COLUMN superset_id INTEGER"))
                     db.session.commit()
-                    print("✓ Colonna superset_id aggiunta a routine_exercise")
+                    print("[OK] Colonna superset_id aggiunta a routine_exercise")
             else:
-                print("✓ Nuovo database, nessuna migrazione necessaria")
+                print("[OK] Nuovo database, nessuna migrazione necessaria")
 
             if 'routine' in existing_tables:
                 routine_cols = [c["name"] for c in inspector.get_columns('routine')]
                 if "public_token" not in routine_cols:
                     db.session.execute(text("ALTER TABLE routine ADD COLUMN public_token VARCHAR(36)"))
                     db.session.commit()
-                    print("✓ Colonna public_token aggiunta a routine")
+                    print("[OK] Colonna public_token aggiunta a routine")
                     for r in Routine.query.filter_by(public_token=None).all():
                         r.public_token = _generate_public_token()
                     db.session.commit()
-                    print("✓ public_token generati per routine esistenti")
+                    print("[OK] public_token generati per routine esistenti")
 
             if 'user' in existing_tables:
                 user_cols = [c["name"] for c in inspector.get_columns('user')]
                 if "profile_image" not in user_cols:
                     db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN profile_image TEXT"))
                     db.session.commit()
-                    print("✓ Colonna profile_image aggiunta a user")
+                    print("[OK] Colonna profile_image aggiunta a user")
                 if "friend_code" not in user_cols:
                     db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN friend_code VARCHAR(4)"))
                     db.session.commit()
-                    print("✓ Colonna friend_code aggiunta a user")
+                    print("[OK] Colonna friend_code aggiunta a user")
                     for u in User.query.filter_by(friend_code=None).all():
                         u.friend_code = _generate_friend_code()
                     db.session.commit()
-                    print("✓ friend_code assegnati a utenti esistenti")
+                    print("[OK] friend_code assegnati a utenti esistenti")
                 if "is_admin" not in user_cols:
                     db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
                     db.session.commit()
-                    print("✓ Colonna is_admin aggiunta a user")
+                    print("[OK] Colonna is_admin aggiunta a user")
                 if "public_token" not in user_cols:
                     db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN public_token VARCHAR(36)"))
                     db.session.commit()
-                    print("✓ Colonna public_token aggiunta a user")
+                    print("[OK] Colonna public_token aggiunta a user")
                     for u in User.query.filter_by(public_token=None).all():
                         u.public_token = _generate_user_public_token()
                     db.session.commit()
-                    print("✓ public_token generati per utenti esistenti")
+                    print("[OK] public_token generati per utenti esistenti")
 
             all_users = User.query.all()
             for user in all_users:
@@ -347,7 +347,7 @@ def ensure_database():
             if not admin_password and not IS_VERCEL and not os.environ.get("DATABASE_URL"):
                 admin_password = "admin123"
             if not default_user and admin_password:
-                print("→ Creando utente admin di default...")
+                print("-> Creando utente admin di default...")
                 admin = User(
                     username=admin_username,
                     email=os.environ.get("ADMIN_EMAIL", "admin@example.com"),
@@ -357,14 +357,14 @@ def ensure_database():
                 admin.set_password(admin_password)
                 db.session.add(admin)
                 db.session.commit()
-                print("✓ Utente admin creato")
+                print("[OK] Utente admin creato")
             elif default_user and not default_user.is_admin:
                 default_user.is_admin = True
                 db.session.commit()
-                print(f"✓ Utente {admin_username} impostato come admin")
+                print(f"[OK] Utente {admin_username} impostato come admin")
 
         except Exception as e:
-            print(f"⚠ Warning in database migration: {e}")
+            print(f"[WARN] Warning in database migration: {e}")
             db.session.rollback()
 
 
@@ -375,7 +375,7 @@ def _migrate_old_workouts(cols):
     )).fetchall()
 
     if not rows:
-        print("  ✓ Nessun vecchio workout da migrare")
+        print("  [OK] Nessun vecchio workout da migrare")
         return
 
     from collections import defaultdict
@@ -438,13 +438,13 @@ def _migrate_old_workouts(cols):
                     ), {"sid": session.id, "pos": s_pos, "wid": r.id})
 
         db.session.commit()
-        print(f"  ✓ Migrazione completata per user {user_id}")
+        print(f"  [OK] Migrazione completata per user {user_id}")
 
     try:
         if db.engine.dialect.name == "postgresql":
             db.session.execute(text("ALTER TABLE workout DROP COLUMN day"))
             db.session.commit()
-            print("  ✓ Colonna day rimossa")
+            print("  [OK] Colonna day rimossa")
         elif db.engine.dialect.name == "sqlite":
             db.session.execute(text(
                 "CREATE TABLE workout_new AS "
@@ -454,14 +454,14 @@ def _migrate_old_workouts(cols):
             db.session.execute(text("DROP TABLE workout"))
             db.session.execute(text("ALTER TABLE workout_new RENAME TO workout"))
             db.session.commit()
-            print("  ✓ Colonna day rimossa (SQLite rebuild)")
+            print("  [OK] Colonna day rimossa (SQLite rebuild)")
     except Exception:
         db.session.rollback()
-        print("  ⚠ Impossibile rimuovere colonna day (non critico)")
+        print("  [WARN] Impossibile rimuovere colonna day (non critico)")
 
 
 def _create_default_routines(user):
-    print(f"  → Creando routine vuote per {user.username}...")
+    print(f"  -> Creando routine vuote per {user.username}...")
 
 
 # ============= EXERCISES DATASET =============
@@ -648,7 +648,7 @@ def register():
         except Exception as e:
             db.session.rollback()
             print(f"Registration error: {e}")
-            flash(f"✗ Errore durante la registrazione: {str(e)}", "danger")
+            flash(f"[ERR] Errore durante la registrazione: {str(e)}", "danger")
             return render_template("landing.html", form=form)
 
     return render_template("landing.html", form=form)
@@ -762,7 +762,7 @@ def toggle_admin(user_id):
     user.is_admin = not user.is_admin
     db.session.commit()
     status = "promosso ad admin" if user.is_admin else "retrocesso da admin"
-    flash(f"✓ {user.username} {status}.", "success")
+    flash(f"[OK] {user.username} {status}.", "success")
     return redirect(url_for("admin_panel"))
 
 
@@ -794,7 +794,7 @@ def admin_delete_user(user_id):
     ).delete()
     db.session.delete(user)
     db.session.commit()
-    flash(f"✓ Utente {username} eliminato.", "success")
+    flash(f"[OK] Utente {username} eliminato.", "success")
     return redirect(url_for("admin_panel"))
 
 
@@ -814,7 +814,7 @@ def admin_reset_password(user_id):
     new_pass = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
     user.set_password(new_pass)
     db.session.commit()
-    flash(f"✓ Password di {user.username} resettata. Nuova password: <strong>{new_pass}</strong>", "success")
+    flash(f"[OK] Password di {user.username} resettata. Nuova password: <strong>{new_pass}</strong>", "success")
     return redirect(url_for("admin_panel"))
 
 
@@ -851,7 +851,7 @@ def admin_edit_user(user_id):
         user.friend_code = new_friend_code
 
     db.session.commit()
-    flash(f"✓ Utente aggiornato.", "success")
+    flash(f"[OK] Utente aggiornato.", "success")
     return redirect(url_for("admin_panel"))
 
 
@@ -974,7 +974,7 @@ def send_friend_request(user_id):
             if existing.receiver_id == current_user.id:
                 existing.status = "accepted"
                 db.session.commit()
-                flash(f"✓ Richiesta di {target.username} accettata!", "success")
+                flash(f"[OK] Richiesta di {target.username} accettata!", "success")
             else:
                 flash("✗ Richiesta già inviata.", "info")
         return redirect(url_for("search_users"))
@@ -982,7 +982,7 @@ def send_friend_request(user_id):
     f = Friendship(requester_id=current_user.id, receiver_id=user_id, status="pending")
     db.session.add(f)
     db.session.commit()
-    flash(f"✓ Richiesta di amicizia inviata a {target.username}.", "success")
+    flash(f"[OK] Richiesta di amicizia inviata a {target.username}.", "success")
     return redirect(url_for("search_users"))
 
 
@@ -997,7 +997,7 @@ def accept_friend_request(friendship_id):
     f.status = "accepted"
     db.session.commit()
     requester = db.session.get(User, f.requester_id)
-    flash(f"✓ Amicizia con {requester.username} accettata!", "success")
+    flash(f"[OK] Amicizia con {requester.username} accettata!", "success")
     return redirect(url_for("notifications"))
 
 
@@ -1030,7 +1030,7 @@ def remove_friend(friendship_id):
     other = db.session.get(User, f.receiver_id if f.requester_id == current_user.id else f.requester_id)
     db.session.delete(f)
     db.session.commit()
-    flash(f"✗ Amicizia con {other.username} rimossa.", "info")
+    flash(f"[ERR] Amicizia con {other.username} rimossa.", "info")
     return redirect(url_for("notifications"))
 
 
@@ -1299,7 +1299,7 @@ def import_routine(token, routine_token):
         db.session.add(new_ex)
 
     db.session.commit()
-    flash(f"✓ Routine '{source_routine.name}' importata con successo!", "success")
+    flash(f"[OK] Routine '{source_routine.name}' importata con successo!", "success")
     return redirect(url_for("dashboard"))
 
 
@@ -1326,12 +1326,6 @@ def dashboard():
     for re in RoutineExercise.query.filter(RoutineExercise.routine_id.in_(routine_ids)).order_by(RoutineExercise.position.asc()).all():
         ex_by_routine.setdefault(re.routine_id, []).append(re)
 
-    last_session_subq = db.session.query(
-        RoutineSession.routine_id,
-        func.max(RoutineSession.date).label("max_date")
-    ).filter(RoutineSession.routine_id.in_(routine_ids), RoutineSession.user_id == current_user.id
-    ).group_by(RoutineSession.routine_id).subquery()
-
     count_by_routine = dict(
         db.session.query(
             RoutineSession.routine_id,
@@ -1340,13 +1334,16 @@ def dashboard():
         ).group_by(RoutineSession.routine_id).all()
     )
 
-    last_dates = dict(
-        db.session.query(RoutineSession.routine_id, RoutineSession.date).join(
-            last_session_subq,
-            (RoutineSession.routine_id == last_session_subq.c.routine_id) &
-            (RoutineSession.date == last_session_subq.c.max_date)
-        ).filter(RoutineSession.user_id == current_user.id).all()
-    )
+    # Get last session date per routine in one query
+    last_sessions = RoutineSession.query.filter(
+        RoutineSession.routine_id.in_(routine_ids),
+        RoutineSession.user_id == current_user.id
+    ).order_by(RoutineSession.date.desc()).all()
+
+    last_dates = {}
+    for s in last_sessions:
+        if s.routine_id not in last_dates:
+            last_dates[s.routine_id] = s.date
 
     routine_data = []
     for r in routines:
@@ -1489,7 +1486,7 @@ def add_routine_exercise(routine_id):
     )
     db.session.add(re)
     db.session.commit()
-    flash(f"✓ Esercizio '{exercise}' aggiunto alla routine.", "success")
+    flash(f"[OK] Esercizio '{exercise}' aggiunto alla routine.", "success")
     return redirect(url_for("manage_routine", routine_id=routine_id))
 
 
@@ -1661,7 +1658,7 @@ def start_routine(routine_id):
         db.session.add(workout)
 
     db.session.commit()
-    flash(f"✓ Sessione '{routine.name}' avviata per oggi!", "success")
+    flash(f"[OK] Sessione '{routine.name}' avviata per oggi!", "success")
     return redirect(url_for("session_view", session_id=session.id))
 
 
@@ -1811,7 +1808,7 @@ def delete_session_workout(session_id, workout_id):
         flash("✓ Esercizio rimosso dalla sessione.", "info")
     except Exception as e:
         db.session.rollback()
-        flash(f"✗ Errore: {str(e)}", "danger")
+        flash(f"[ERR] Errore: {str(e)}", "danger")
 
     return redirect(url_for("session_view", session_id=session_id))
 
@@ -1834,7 +1831,7 @@ def delete_session(session_id):
         flash("✓ Sessione eliminata.", "info")
     except Exception as e:
         db.session.rollback()
-        flash(f"✗ Errore: {str(e)}", "danger")
+        flash(f"[ERR] Errore: {str(e)}", "danger")
 
     return redirect(url_for("dashboard"))
 
