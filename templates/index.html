@@ -92,7 +92,7 @@
                 <div class="px-3 pb-3">
                     <small class="text-muted">
                         {% if rd.session_count > 0 %}{{ rd.session_count }} sessioni{% endif %}
-                        {% if rd.last_session %} &middot; Ultima: {{ rd.last_session.date.strftime('%d/%m/%Y') }}{% endif %}
+                        {% if rd.last_session %} &middot; Ultima: {{ rd.last_session.strftime('%d/%m/%Y') }}{% endif %}
                     </small>
                 </div>
                 {% endif %}
