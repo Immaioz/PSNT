@@ -1761,14 +1761,14 @@ def save_session_workouts(session_id):
         return redirect(url_for("dashboard"))
 
     # Accept either JSON or form-encoded with workouts_json
-    raw_json = request.form.get("workouts_json")
-    if raw_json:
-        try:
-            data = json.loads(raw_json)
-        except (json.JSONDecodeError, TypeError):
-            data = None
-    else:
-        data = request.get_json()
+    data = request.get_json(silent=True)
+    if not data or "workouts" not in data:
+        raw_json = request.form.get("workouts_json")
+        if raw_json:
+            try:
+                data = json.loads(raw_json)
+            except (json.JSONDecodeError, TypeError):
+                data = None
 
     if not data or "workouts" not in data:
         if request.is_json:
