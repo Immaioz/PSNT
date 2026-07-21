@@ -1760,23 +1760,51 @@ def save_session_workouts(session_id):
         flash("✗ Accesso negato.", "danger")
         return redirect(url_for("dashboard"))
 
-    # Accept either JSON or form-encoded with workouts_json
-    data = request.get_json(silent=True)
-    if not data or "workouts" not in data:
-        raw_json = request.form.get("workouts_json")
-        if raw_json:
-            try:
-                data = json.loads(raw_json)
-            except (json.JSONDecodeError, TypeError):
-                data = None
+    updated = 0
 
+    # Form submission (individual fields)
+    workout_ids = request.form.getlist("workout_id")
+    if workout_ids:
+        for wid in workout_ids:
+            try:
+                w = db.session.get(Workout, int(wid))
+                if not w or w.session_id != session.id or w.user_id != current_user.id:
+                    continue
+
+                weight = request.form.get(f"weight_{wid}", "").strip()
+                sets = request.form.get(f"sets_{wid}", "").strip()
+                reps = request.form.get(f"reps_{wid}", "").strip()
+
+                w.weight = weight if weight else None
+                if sets and sets.isdigit():
+                    w.sets = int(sets)
+                elif sets == "":
+                    w.sets = None
+                if reps:
+                    w.reps = reps
+                elif reps == "":
+                    w.reps = None
+
+                if weight:
+                    log_weight(w, weight)
+
+                updated += 1
+            except Exception as e:
+                print(f"save-all error for workout {wid}: {e}")
+                continue
+
+        db.session.commit()
+        flash(f"✓ Sessione salvata ({updated} esercizi).", "success")
+        return redirect(url_for("dashboard"))
+
+    # Fallback: JSON submission
+    data = request.get_json(silent=True)
     if not data or "workouts" not in data:
         if request.is_json:
             return jsonify({"error": "Dati mancanti"}), 400
         flash("✗ Dati mancanti", "danger")
         return redirect(url_for("session_view", session_id=session_id))
 
-    updated = 0
     for item in data["workouts"]:
         try:
             wid = item.get("id")

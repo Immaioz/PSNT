@@ -49,11 +49,6 @@
         color: #fff; border: none; font-weight: 600;
     }
     .btn-save-all:hover { background: linear-gradient(135deg, #047857, #059669); color: #fff; }
-    .saved-indicator {
-        opacity: 0; transition: opacity .3s;
-        font-size: .75rem; color: #059669; font-weight: 600;
-    }
-    .saved-indicator.show { opacity: 1; }
 </style>
 {% endblock %}
 
@@ -67,12 +62,9 @@
         <small class="text-muted">{{ session.date.strftime('%d/%m/%Y') }}</small>
     </div>
     <div class="d-flex gap-2 align-items-center">
-        <form method="POST" action="{{ url_for('save_session_workouts', session_id=session.id) }}" id="saveAllForm" class="d-inline">
-            <input type="hidden" name="workouts_json" id="workoutsJson" value="">
-            <button type="submit" class="btn btn-save-all" id="saveAllBtn" onclick="return prepSaveAndSubmit()">
-                <i class="bi bi-check-lg"></i> Salva e Concludi
-            </button>
-        </form>
+        <button type="submit" form="saveAllForm" class="btn btn-save-all" id="saveAllBtn">
+            <i class="bi bi-check-lg"></i> Salva e Concludi
+        </button>
         <form method="POST" action="{{ url_for('delete_session', session_id=session.id) }}">
             <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Eliminare questa sessione?')">
                 <i class="bi bi-trash"></i>
@@ -81,17 +73,22 @@
     </div>
 </div>
 
+<form method="POST" action="{{ url_for('save_session_workouts', session_id=session.id) }}" id="saveAllForm">
 {% if workout_data %}
 <div class="card shadow-sm">
     <div class="card-body p-0">
         {% set ns = namespace(rendered_supersets=[]) %}
         {% for wd in workout_data %}
         {% set w = wd.workout %}
+        <input type="hidden" name="workout_id" value="{{ w.id }}">
 
         {% if w.superset_id and w.superset_id not in ns.rendered_supersets %}
             {% set ns.rendered_supersets = ns.rendered_supersets + [w.superset_id] %}
             {% set group = superset_groups.get(w.superset_id, []) %}
             {% set first_w = group[0].workout if group else w %}
+
+            <!-- Hidden form for superset group sets/reps (submitted via form= attribute) -->
+            <form method="POST" action="{{ url_for('update_superset_group', session_id=session.id, superset_id=w.superset_id) }}" id="supersetGroupForm{{ w.superset_id }}"></form>
 
             <div class="superset-group">
                 <div class="superset-header">
@@ -99,17 +96,15 @@
                 </div>
 
                 <div class="superset-shared">
-                    <form method="POST" action="{{ url_for('update_superset_group', session_id=session.id, superset_id=w.superset_id) }}" class="d-flex align-items-center gap-2 flex-wrap">
-                        <label>Set x Reps (gruppo):</label>
-                        <div class="sets-reps-ctrl d-flex gap-1">
-                            <input type="number" name="sets" value="{{ first_w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
-                            <span class="text-muted">x</span>
-                            <input type="text" name="reps" value="{{ first_w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
-                        </div>
-                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Salva Set/Reps gruppo">
-                            <i class="bi bi-check-lg"></i> Gruppo
-                        </button>
-                    </form>
+                    <label>Set x Reps (gruppo):</label>
+                    <div class="sets-reps-ctrl d-flex gap-1">
+                        <input type="number" name="sets" form="supersetGroupForm{{ w.superset_id }}" value="{{ first_w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
+                        <span class="text-muted">x</span>
+                        <input type="text" name="reps" form="supersetGroupForm{{ w.superset_id }}" value="{{ first_w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
+                    </div>
+                    <button type="submit" form="supersetGroupForm{{ w.superset_id }}" class="btn btn-sm btn-outline-primary" title="Salva Set/Reps gruppo">
+                        <i class="bi bi-check-lg"></i> Gruppo
+                    </button>
                 </div>
 
                 <div class="superset-exercises">
@@ -123,13 +118,13 @@
                             </a>
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <div class="sets-reps-ctrl d-flex gap-1">
-                                    <input type="number" data-field="sets" data-id="{{ gw.id }}" value="{{ gw.sets or '' }}" placeholder="Set" class="form-control form-control-sm" style="width:45px;">
+                                    <input type="number" name="sets_{{ gw.id }}" value="{{ gw.sets or '' }}" placeholder="Set" class="form-control form-control-sm" style="width:45px;">
                                     <span class="text-muted">x</span>
-                                    <input type="text" data-field="reps" data-id="{{ gw.id }}" value="{{ gw.reps or '' }}" placeholder="Reps" class="form-control form-control-sm" style="width:50px;">
+                                    <input type="text" name="reps_{{ gw.id }}" value="{{ gw.reps or '' }}" placeholder="Reps" class="form-control form-control-sm" style="width:50px;">
                                 </div>
                                 <div class="weight-ctrl">
                                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
-                                    <input type="text" data-field="weight" data-id="{{ gw.id }}" value="{{ gw.weight or '' }}" placeholder="kg">
+                                    <input type="text" data-field="weight" name="weight_{{ gw.id }}" value="{{ gw.weight or '' }}" placeholder="kg">
                                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
                                 </div>
                             </div>
@@ -149,13 +144,13 @@
                     </a>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <div class="sets-reps-ctrl d-flex gap-1">
-                            <input type="number" data-field="sets" data-id="{{ w.id }}" value="{{ w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
+                            <input type="number" name="sets_{{ w.id }}" value="{{ w.sets or '' }}" placeholder="Set" class="form-control form-control-sm">
                             <span class="text-muted">x</span>
-                            <input type="text" data-field="reps" data-id="{{ w.id }}" value="{{ w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
+                            <input type="text" name="reps_{{ w.id }}" value="{{ w.reps or '' }}" placeholder="Reps" class="form-control form-control-sm">
                         </div>
                         <div class="weight-ctrl">
                             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, -2.5)" title="-2.5 kg">-</button>
-                            <input type="text" data-field="weight" data-id="{{ w.id }}" value="{{ w.weight or '' }}" placeholder="kg">
+                            <input type="text" data-field="weight" name="weight_{{ w.id }}" value="{{ w.weight or '' }}" placeholder="kg">
                             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="adjustWeight(this, 2.5)" title="+2.5 kg">+</button>
                         </div>
                     </div>
@@ -172,39 +167,19 @@
     <i class="bi bi-info-circle"></i> Nessun esercizio in questa sessione.
 </div>
 {% endif %}
+</form>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 function adjustWeight(btn, delta) {
     const row = btn.closest('.workout-row, .superset-exercises');
-    const input = row ? row.querySelector('input[data-field="weight"]') : btn.closest('form').querySelector('input[name="weight"]');
+    const input = row ? row.querySelector('input[data-field="weight"]') : null;
     if (!input) return;
     let val = parseFloat(input.value) || 0;
     val = Math.round((val + delta) * 10) / 10;
     if (val <= 0) val = '';
     input.value = val;
-}
-
-function collectWorkouts() {
-    const workouts = [];
-    document.querySelectorAll('input[data-field]').forEach(input => {
-        const id = parseInt(input.dataset.id);
-        if (isNaN(id)) return;
-        const field = input.dataset.field;
-        let existing = workouts.find(w => w.id === id);
-        if (!existing) {
-            existing = {id: id, weight: '', sets: '', reps: ''};
-            workouts.push(existing);
-        }
-        existing[field] = input.value;
-    });
-    return workouts;
-}
-
-function prepSaveAndSubmit() {
-    document.getElementById('workoutsJson').value = JSON.stringify({workouts: collectWorkouts()});
-    return true;
 }
 </script>
 {% endblock %}
