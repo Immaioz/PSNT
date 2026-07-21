@@ -1763,28 +1763,38 @@ def save_session_workouts(session_id):
 
     updated = 0
     for item in data["workouts"]:
-        w = Workout.query.get(item.get("id"))
-        if not w or w.session_id != session.id or w.user_id != current_user.id:
+        try:
+            wid = item.get("id")
+            if wid is None:
+                continue
+            w = db.session.get(Workout, int(wid))
+            if not w or w.session_id != session.id or w.user_id != current_user.id:
+                continue
+
+            raw_weight = item.get("weight")
+            weight = str(raw_weight).strip() if raw_weight is not None else ""
+            raw_sets = item.get("sets")
+            sets = str(raw_sets).strip() if raw_sets is not None else ""
+            raw_reps = item.get("reps")
+            reps = str(raw_reps).strip() if raw_reps is not None else ""
+
+            w.weight = weight if weight else None
+            if sets and sets.isdigit():
+                w.sets = int(sets)
+            elif sets == "":
+                w.sets = None
+            if reps:
+                w.reps = reps
+            elif reps == "":
+                w.reps = None
+
+            if weight:
+                log_weight(w, weight)
+
+            updated += 1
+        except Exception as e:
+            print(f"save-all error for item {item.get('id')}: {e}")
             continue
-
-        weight = (item.get("weight") or "").strip()
-        sets = (item.get("sets") or "").strip()
-        reps = (item.get("reps") or "").strip()
-
-        w.weight = weight if weight else None
-        if sets and sets.isdigit():
-            w.sets = int(sets)
-        elif sets == "":
-            w.sets = None
-        if reps:
-            w.reps = reps
-        elif reps == "":
-            w.reps = None
-
-        if weight:
-            log_weight(w, weight)
-
-        updated += 1
 
     db.session.commit()
     return jsonify({"success": True, "updated": updated})

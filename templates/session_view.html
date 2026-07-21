@@ -187,9 +187,10 @@ function adjustWeight(btn, delta) {
 function collectWorkouts() {
     const workouts = [];
     document.querySelectorAll('input[data-field]').forEach(input => {
-        const id = input.dataset.id;
+        const id = parseInt(input.dataset.id);
+        if (isNaN(id)) return;
         const field = input.dataset.field;
-        let existing = workouts.find(w => w.id == id);
+        let existing = workouts.find(w => w.id === id);
         if (!existing) {
             existing = {id: id, weight: '', sets: '', reps: ''};
             workouts.push(existing);
@@ -210,16 +211,15 @@ function saveAllAndRedirect() {
         body: JSON.stringify({workouts: collectWorkouts()})
     }).then(r => r.json()).then(data => {
         if (data.success) {
-            const indicator = document.getElementById('savedIndicator');
-            indicator.classList.add('show');
-            setTimeout(() => { window.location.href = '{{ url_for("dashboard") }}'; }, 500);
+            window.location.href = '{{ url_for("dashboard") }}';
         } else {
             alert('Errore: ' + (data.error || 'sconosciuto'));
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-check-lg"></i> Salva e Concludi';
         }
-    }).catch(() => {
-        alert('Errore di rete.');
+    }).catch(function(err) {
+        console.error('save-all error:', err);
+        alert('Errore di salvataggio. Riprova.');
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-check-lg"></i> Salva e Concludi';
     });
