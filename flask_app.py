@@ -195,11 +195,15 @@ def log_weight(workout, weight_str):
         w_val = float(weight_str.replace(",", "."))
     except (ValueError, AttributeError):
         return
+    entry_date = workout.created_at.date() if workout.created_at else datetime.utcnow().date()
+    existing = WeightHistory.query.filter_by(workout_id=workout.id, user_id=workout.user_id, weight=w_val, date=entry_date).first()
+    if existing:
+        return
     entry = WeightHistory(
         workout_id=workout.id,
         user_id=workout.user_id,
         weight=w_val,
-        date=workout.created_at.date() if workout.created_at else datetime.utcnow().date(),
+        date=entry_date,
     )
     db.session.add(entry)
 
@@ -1707,14 +1711,13 @@ def update_session_workout(session_id, workout_id):
     sets = request.form.get("sets", "").strip()
     reps = request.form.get("reps", "").strip()
 
-    old_weight = w.weight
     w.weight = weight if weight else None
     if sets and sets.isdigit():
         w.sets = int(sets)
     if reps:
         w.reps = reps
 
-    if weight and weight != old_weight:
+    if weight:
         log_weight(w, weight)
 
     db.session.commit()
@@ -1768,7 +1771,6 @@ def save_session_workouts(session_id):
         sets = (item.get("sets") or "").strip()
         reps = (item.get("reps") or "").strip()
 
-        old_weight = w.weight
         w.weight = weight if weight else None
         if sets and sets.isdigit():
             w.sets = int(sets)
@@ -1779,7 +1781,7 @@ def save_session_workouts(session_id):
         elif reps == "":
             w.reps = None
 
-        if weight and weight != old_weight:
+        if weight:
             log_weight(w, weight)
 
         updated += 1
