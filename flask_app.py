@@ -2155,6 +2155,308 @@ def delete_weight_entry(entry_id):
     return jsonify({"success": True})
 
 
+# ============= API REST (Android App) =============
+
+@login_manager.request_loader
+def load_user_from_request(request):
+    auth = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if auth:
+        return User.query.filter_by(public_token=auth).first()
+    return None
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "username required"}), 400
+
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        user = User(
+            username=username,
+            email=f"{username}@psnt.app",
+            password_hash=generate_password_hash("psnt"),
+            friend_code=_generate_friend_code(),
+            public_token=str(uuid.uuid4())
+        )
+        db.session.add(user)
+        db.session.commit()
+    elif not user.public_token:
+        user.public_token = str(uuid.uuid4())
+        db.session.commit()
+
+    return jsonify({
+        "id": user.id, "username": user.username,
+        "token": user.public_token, "friend_code": user.friend_code
+    })
+
+
+@app.route("/api/dashboard")
+@login_required
+def api_dashboard():
+    total_sessions = RoutineSession.query.filter_by(user_id=current_user.id).count()
+    total_workouts = Workout.query.filter_by(user_id=current_user.id).count()
+    last = RoutineSession.query.filter_by(user_id=current_user.id).order_by(RoutineSession.date.desc()).first()
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    return jsonify({
+        "username": current_user.username, "friend_code": current_user.friend_code,
+        "total_sessions": total_sessions, "total_workouts": total_workouts,
+        "last_session_date": last.date.isoformat() if last else None,
+        "routines": [{"id": r.id, "name": r.name, "position": r.position} for r in routines]
+    })
+
+
+@app.route("/api/routines")
+@login_required
+def api_routines():
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    return jsonify([{
+        "id": r.id, "name": r.name, "position": r.position,
+        "exercises": [{
+            "id": re.id, "exercise_id": re.exercise_id or re.exercise,
+            "exercise": re.exercise, "position": re.position,
+            "default_sets": re.default_sets, "default_reps": re.default_reps
+        } for re in (r.exercises or [])]
+    } for r in routines])
+
+
+@app.route("/api/routines/create", methods=["POST"])
+@login_required
+def api_create_routine():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "nome mancante"}), 400
+    max_pos = db.session.query(func.max(Routine.position)).filter(Routine.user_id == current_user.id).scalar()
+    r = Routine(user_id=current_user.id, name=name, position=(max_pos or 0) + 1, public_token=str(uuid.uuid4()))
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({"id": r.id, "name": r.name, "position": r.position}), 201
+
+
+@app.route("/api/routines/<int:routine_id>/rename", methods=["POST"])
+@login_required
+def api_rename_routine(routine_id):
+    r = Routine.query.get_or_404(routine_id)
+    if r.user_id != current_user.id:
+        return jsonify({"error": "access denied"}), 403
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name: return jsonify({"error": "nome mancante"}), 400
+    r.name = name
+    db.session.commit()
+    return jsonify({"id": r.id, "name": r.name})
+
+
+@app.route("/api/routines/<int:routine_id>", methods=["DELETE"])
+@login_required
+def api_delete_routine(routine_id):
+    r = Routine.query.get_or_404(routine_id)
+    if r.user_id != current_user.id: return jsonify({"error": "access denied"}), 403
+    db.session.delete(r)
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@app.route("/api/routines/<int:routine_id>/exercises", methods=["POST"])
+@login_required
+def api_add_exercise(routine_id):
+    r = Routine.query.get_or_404(routine_id)
+    if r.user_id != current_user.id: return jsonify({"error": "access denied"}), 403
+    data = request.get_json(silent=True) or {}
+    eid = (data.get("exercise_id") or "").strip()
+    if not eid: return jsonify({"error": "exercise_id required"}), 400
+    pos = len(r.exercises)
+    re = RoutineExercise(routine_id=routine_id, user_id=current_user.id, exercise=eid, exercise_id=eid, position=pos)
+    db.session.add(re)
+    db.session.commit()
+    return jsonify({"id": re.id, "exercise_id": re.exercise_id}), 201
+
+
+@app.route("/api/routines/exercises/<int:re_id>", methods=["DELETE"])
+@login_required
+def api_remove_exercise(re_id):
+    re = RoutineExercise.query.get_or_404(re_id)
+    if re.user_id != current_user.id: return jsonify({"error": "access denied"}), 403
+    db.session.delete(re)
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@app.route("/api/routines/<int:routine_id>/start", methods=["POST"])
+@login_required
+def api_start_session(routine_id):
+    r = Routine.query.get_or_404(routine_id)
+    if r.user_id != current_user.id: return jsonify({"error": "access denied"}), 403
+    session = RoutineSession(routine_id=r.id, user_id=current_user.id, date=datetime.utcnow().date())
+    db.session.add(session)
+    db.session.flush()
+    for i, re in enumerate(r.exercises or []):
+        db.session.add(Workout(
+            user_id=current_user.id, session_id=session.id, exercise=re.exercise,
+            exercise_id=re.exercise_id, sets=re.default_sets, reps=re.default_reps,
+            weight=None, notes=re.notes, position=i, superset_id=re.superset_id
+        ))
+    db.session.commit()
+    workouts = Workout.query.filter_by(session_id=session.id).order_by(Workout.position.asc()).all()
+    return jsonify({
+        "session_id": session.id, "routine_name": r.name, "date": session.date.isoformat(),
+        "workouts": [{"id": w.id, "exercise": w.exercise, "exercise_id": w.exercise_id,
+                      "sets": w.sets, "reps": w.reps, "weight": w.weight, "position": w.position} for w in workouts]
+    })
+
+
+@app.route("/api/sessions/<int:session_id>")
+@login_required
+def api_get_session(session_id):
+    s = RoutineSession.query.get_or_404(session_id)
+    if s.user_id != current_user.id: return jsonify({"error": "access denied"}), 403
+    wl = Workout.query.filter_by(session_id=s.id).order_by(Workout.position.asc()).all()
+    return jsonify({
+        "id": s.id, "routine_id": s.routine_id, "date": s.date.isoformat(),
+        "routine_name": s.routine.name if s.routine else "",
+        "workouts": [{"id": w.id, "exercise": w.exercise, "exercise_id": w.exercise_id,
+                      "sets": w.sets, "reps": w.reps, "weight": w.weight, "position": w.position,
+                      "superset_id": w.superset_id} for w in wl]
+    })
+
+
+@app.route("/api/sessions/<int:session_id>/save", methods=["POST"])
+@login_required
+def api_save_session(session_id):
+    s = RoutineSession.query.get_or_404(session_id)
+    if s.user_id != current_user.id: return jsonify({"error": "access denied"}), 403
+    data = request.get_json(silent=True)
+    if not data or "workouts" not in data: return jsonify({"error": "missing data"}), 400
+    updated = 0
+    for item in data["workouts"]:
+        try:
+            wid = item.get("id")
+            if wid is None: continue
+            w = db.session.get(Workout, int(wid))
+            if not w or w.session_id != s.id or w.user_id != current_user.id: continue
+            weight = str(item.get("weight") or "").strip()
+            sets_raw = str(item.get("sets") or "").strip()
+            reps = str(item.get("reps") or "").strip()
+            w.weight = weight if weight else None
+            w.sets = int(sets_raw) if sets_raw else None
+            w.reps = reps if reps else None
+            if weight: log_weight(w, weight)
+            updated += 1
+        except Exception as e:
+            print(f"api save error {item.get('id')}: {e}")
+    db.session.commit()
+    return jsonify({"success": True, "updated": updated})
+
+
+@app.route("/api/exercises")
+def api_exercises():
+    q = request.args.get("q", "").strip().lower()
+    bp = request.args.get("body_part", "").strip().lower()
+    results = EXERCISES_DATA
+    if bp: results = EXERCISES_BY_BODY_PART.get(bp, [])
+    elif q: results = [e for e in results if q in e["name"].lower() or q in EXERCISE_NAME_CACHE.get(e["name"], e["name"]).lower()]
+    return jsonify([{
+        "id": e["id"], "name": e["name"],
+        "name_it": get_exercise_name_it(e),
+        "body_part": e.get("body_part", ""),
+        "body_part_it": get_body_part_it(e.get("body_part", "")),
+        "target": e.get("target", ""), "equipment": e.get("equipment", "")
+    } for e in results[:50]])
+
+
+# ============= API AMICI =============
+
+@app.route("/api/friends/search", methods=["POST"])
+@login_required
+def api_friend_search():
+    data = request.get_json(silent=True) or {}
+    query = (data.get("query") or "").strip()
+    if not query: return jsonify({"results": []})
+    users = User.query.filter(
+        func.lower(User.username).contains(query.lower()),
+        User.id != current_user.id
+    ).limit(20).all()
+    return jsonify([{"id": u.id, "username": u.username, "friend_code": u.friend_code} for u in users])
+
+
+@app.route("/api/friends/request", methods=["POST"])
+@login_required
+def api_friend_request():
+    data = request.get_json(silent=True) or {}
+    target_id = data.get("user_id")
+    if not target_id: return jsonify({"error": "user_id required"}), 400
+    target = db.session.get(User, int(target_id))
+    if not target: return jsonify({"error": "user not found"}), 404
+    if target.id == current_user.id: return jsonify({"error": "cannot add yourself"}), 400
+    existing = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) & (Friendship.receiver_id == target.id)) |
+        ((Friendship.requester_id == target.id) & (Friendship.receiver_id == current_user.id))
+    ).first()
+    if existing:
+        if existing.status == "accepted": return jsonify({"error": "already friends"}), 400
+        if existing.receiver_id == current_user.id and existing.status == "pending":
+            existing.status = "accepted"
+            db.session.commit()
+            return jsonify({"success": True, "status": "accepted"})
+        return jsonify({"error": "request already sent"}), 400
+    f = Friendship(requester_id=current_user.id, receiver_id=target.id, status="pending")
+    db.session.add(f)
+    db.session.commit()
+    return jsonify({"success": True, "friendship_id": f.id, "status": "pending"})
+
+
+@app.route("/api/friends/pending")
+@login_required
+def api_friend_pending():
+    received = Friendship.query.filter_by(receiver_id=current_user.id, status="pending").all()
+    return jsonify([{
+        "friendship_id": f.id, "requester_id": f.requester_id,
+        "requester_username": db.session.get(User, f.requester_id).username if db.session.get(User, f.requester_id) else "?"
+    } for f in received])
+
+
+@app.route("/api/friends")
+@login_required
+def api_friends():
+    friends = Friendship.query.filter(
+        ((Friendship.requester_id == current_user.id) | (Friendship.receiver_id == current_user.id)),
+        Friendship.status == "accepted"
+    ).all()
+    result = []
+    for f in friends:
+        uid = f.receiver_id if f.requester_id == current_user.id else f.requester_id
+        u = db.session.get(User, uid)
+        if u:
+            result.append({"friendship_id": f.id, "user_id": u.id, "username": u.username, "friend_code": u.friend_code})
+    return jsonify(result)
+
+
+@app.route("/api/friends/<int:friendship_id>", methods=["DELETE"])
+@login_required
+def api_friend_remove(friendship_id):
+    f = db.session.get(Friendship, friendship_id)
+    if not f: return jsonify({"error": "not found"}), 404
+    if f.requester_id != current_user.id and f.receiver_id != current_user.id:
+        return jsonify({"error": "access denied"}), 403
+    db.session.delete(f)
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@app.route("/api/friends/<int:friendship_id>/accept", methods=["POST"])
+@login_required
+def api_friend_accept(friendship_id):
+    f = db.session.get(Friendship, friendship_id)
+    if not f or f.receiver_id != current_user.id or f.status != "pending":
+        return jsonify({"error": "invalid request"}), 400
+    f.status = "accepted"
+    db.session.commit()
+    return jsonify({"success": True})
+
+
 # ============= HELPER =============
 
 def url_has_allowed_host_and_scheme(url, allowed_hosts=None):
