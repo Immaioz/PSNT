@@ -67,10 +67,12 @@
         <small class="text-muted">{{ session.date.strftime('%d/%m/%Y') }}</small>
     </div>
     <div class="d-flex gap-2 align-items-center">
-        <span class="saved-indicator" id="savedIndicator"><i class="bi bi-check-circle"></i> Salvato!</span>
-        <button type="button" class="btn btn-save-all" id="saveAllBtn" onclick="saveAllAndRedirect()">
-            <i class="bi bi-check-lg"></i> Salva e Concludi
-        </button>
+        <form method="POST" action="{{ url_for('save_session_workouts', session_id=session.id) }}" id="saveAllForm" class="d-inline">
+            <input type="hidden" name="workouts_json" id="workoutsJson" value="">
+            <button type="submit" class="btn btn-save-all" id="saveAllBtn" onclick="return prepSaveAndSubmit()">
+                <i class="bi bi-check-lg"></i> Salva e Concludi
+            </button>
+        </form>
         <form method="POST" action="{{ url_for('delete_session', session_id=session.id) }}">
             <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Eliminare questa sessione?')">
                 <i class="bi bi-trash"></i>
@@ -200,29 +202,9 @@ function collectWorkouts() {
     return workouts;
 }
 
-function saveAllAndRedirect() {
-    const btn = document.getElementById('saveAllBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...';
-
-    fetch('{{ url_for("save_session_workouts", session_id=session.id) }}', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({workouts: collectWorkouts()})
-    }).then(r => r.json()).then(data => {
-        if (data.success) {
-            window.location.href = '{{ url_for("dashboard") }}';
-        } else {
-            alert('Errore: ' + (data.error || 'sconosciuto'));
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-check-lg"></i> Salva e Concludi';
-        }
-    }).catch(function(err) {
-        console.error('save-all error:', err);
-        alert('Errore di salvataggio. Riprova.');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-check-lg"></i> Salva e Concludi';
-    });
+function prepSaveAndSubmit() {
+    document.getElementById('workoutsJson').value = JSON.stringify({workouts: collectWorkouts()});
+    return true;
 }
 </script>
 {% endblock %}

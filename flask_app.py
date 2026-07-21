@@ -1755,11 +1755,26 @@ def update_superset_group(session_id, superset_id):
 def save_session_workouts(session_id):
     session = RoutineSession.query.get_or_404(session_id)
     if session.user_id != current_user.id:
-        return jsonify({"error": "Accesso negato"}), 403
+        if request.is_json:
+            return jsonify({"error": "Accesso negato"}), 403
+        flash("✗ Accesso negato.", "danger")
+        return redirect(url_for("dashboard"))
 
-    data = request.get_json()
+    # Accept either JSON or form-encoded with workouts_json
+    raw_json = request.form.get("workouts_json")
+    if raw_json:
+        try:
+            data = json.loads(raw_json)
+        except (json.JSONDecodeError, TypeError):
+            data = None
+    else:
+        data = request.get_json()
+
     if not data or "workouts" not in data:
-        return jsonify({"error": "Dati mancanti"}), 400
+        if request.is_json:
+            return jsonify({"error": "Dati mancanti"}), 400
+        flash("✗ Dati mancanti", "danger")
+        return redirect(url_for("session_view", session_id=session_id))
 
     updated = 0
     for item in data["workouts"]:
@@ -1797,7 +1812,8 @@ def save_session_workouts(session_id):
             continue
 
     db.session.commit()
-    return jsonify({"success": True, "updated": updated})
+    flash(f"✓ Sessione salvata ({updated} esercizi).", "success")
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/session/<int:session_id>/workout/<int:workout_id>/delete", methods=["POST"])
