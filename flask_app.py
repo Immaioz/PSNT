@@ -586,6 +586,8 @@ def get_exercise_detail(exercise_id):
     result["body_part_it"] = get_body_part_it(ex.get("body_part", ""))
     result["target_it"] = get_target_it(ex.get("target", ""))
     result["equipment_it"] = get_equipment_it(ex.get("equipment", ""))
+    result["instructions_it"] = (ex.get("instructions") or {}).get("it")
+    result["steps_it"] = (ex.get("instruction_steps") or {}).get("it") or []
     if result.get("image"):
         result["image"] = url_for("static", filename="exercises/" + result["image"])
     if result.get("gif_url"):
@@ -2172,7 +2174,7 @@ def api_login():
     if not username:
         return jsonify({"error": "username required"}), 400
 
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter(func.lower(User.username) == username.lower()).first()
     if not user:
         user = User(
             username=username,
@@ -2455,6 +2457,126 @@ def api_friend_accept(friendship_id):
     f.status = "accepted"
     db.session.commit()
     return jsonify({"success": True})
+
+
+# ============= API SESSIONE / ROUTINE / STATS =============
+
+@app.route("/api/sessions/<int:session_id>", methods=["DELETE"])
+@login_required
+def api_delete_session(session_id):
+    s = RoutineSession.query.get_or_404(session_id)
+    if s.user_id != current_user.id:
+        return jsonify({"error": "access denied"}), 403
+    try:
+        workouts = Workout.query.filter_by(session_id=s.id).all()
+        for w in workouts:
+            WeightHistory.query.filter_by(workout_id=w.id).delete()
+        Workout.query.filter_by(session_id=s.id).delete()
+        db.session.delete(s)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/routines/reorder", methods=["POST"])
+@login_required
+def api_reorder_routines():
+    data = request.get_json(silent=True) or {}
+    order = data.get("order", [])
+    if not isinstance(order, list):
+        return jsonify({"error": "missing order"}), 400
+    try:
+        ids = [int(x) for x in order]
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid order"}), 400
+    owned = {r.id for r in Routine.query.filter_by(user_id=current_user.id).all()}
+    for i, rid in enumerate(ids, start=1):
+        if rid in owned:
+            r = db.session.get(Routine, rid)
+            r.position = i
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@app.route("/api/stats")
+@login_required
+def api_stats():
+    routines = Routine.query.filter_by(user_id=current_user.id).order_by(Routine.position.asc()).all()
+    routine_ids = [r.id for r in routines]
+    if not routine_ids:
+        return jsonify({"routines": []})
+
+    sessions = RoutineSession.query.filter(
+        RoutineSession.routine_id.in_(routine_ids),
+        RoutineSession.user_id == current_user.id
+    ).order_by(RoutineSession.date.desc()).all()
+    session_ids = [s.id for s in sessions]
+
+    workouts = []
+    if session_ids:
+        workouts = Workout.query.filter(
+            Workout.session_id.in_(session_ids),
+            Workout.user_id == current_user.id
+        ).all()
+
+    workout_lookup = {}
+    for wo in workouts:
+        workout_lookup.setdefault(wo.session_id, {})[wo.exercise] = wo
+
+    exercises_by_routine = {}
+    for re in RoutineExercise.query.filter(RoutineExercise.routine_id.in_(routine_ids)).order_by(RoutineExercise.position.asc()).all():
+        exercises_by_routine.setdefault(re.routine_id, []).append(re)
+
+    result = []
+    for r in routines:
+        ex_stats = []
+        for re in exercises_by_routine.get(r.id, []):
+            session_workouts = []
+            for s in sessions:
+                if s.routine_id != r.id:
+                    continue
+                wo = workout_lookup.get(s.id, {}).get(re.exercise)
+                if wo:
+                    session_workouts.append((s, wo))
+
+            latest_sw = session_workouts[0] if session_workouts else None
+            pr_sw = max(session_workouts, key=lambda x: float(x[1].weight) if x[1].weight else 0) if session_workouts else None
+
+            latest_weight = None
+            latest_date = None
+            if latest_sw:
+                try:
+                    latest_weight = float(latest_sw[1].weight.replace(",", ".")) if latest_sw[1].weight else None
+                except (ValueError, AttributeError):
+                    latest_weight = None
+                latest_date = latest_sw[0].date.isoformat() if latest_sw[0].date else None
+
+            pr_weight = None
+            pr_date = None
+            if pr_sw and pr_sw[1].weight:
+                try:
+                    pr_weight = float(pr_sw[1].weight.replace(",", "."))
+                    pr_date = pr_sw[0].date.isoformat() if pr_sw[0].date else None
+                except (ValueError, AttributeError):
+                    pass
+
+            ex_stats.append({
+                "name_it": _resolve_exercise_name(re.exercise, re.exercise_id),
+                "exercise_id": re.exercise_id,
+                "default_sets": re.default_sets,
+                "default_reps": re.default_reps,
+                "latest_weight": latest_weight,
+                "latest_date": latest_date,
+                "pr_weight": pr_weight,
+                "pr_date": pr_date,
+                "total_sessions": len(session_workouts),
+            })
+
+        result.append({"id": r.id, "name": r.name, "exercises": ex_stats})
+
+    return jsonify({"routines": result})
 
 
 # ============= HELPER =============
