@@ -2225,6 +2225,23 @@ def api_routines():
     } for r in routines])
 
 
+@app.route("/api/routines/<int:routine_id>")
+@login_required
+def api_routine_detail(routine_id):
+    r = Routine.query.get_or_404(routine_id)
+    if r.user_id != current_user.id:
+        return jsonify({"error": "access denied"}), 403
+    return jsonify({
+        "id": r.id, "name": r.name, "position": r.position,
+        "exercises": [{
+            "id": re.id, "exercise_id": re.exercise_id or re.exercise,
+            "exercise": _resolve_exercise_name(re.exercise, re.exercise_id),
+            "position": re.position,
+            "default_sets": re.default_sets, "default_reps": re.default_reps
+        } for re in (r.exercises or [])]
+    })
+
+
 @app.route("/api/routines/create", methods=["POST"])
 @login_required
 def api_create_routine():
@@ -2321,6 +2338,7 @@ def api_get_session(session_id):
         "id": s.id, "routine_id": s.routine_id, "date": s.date.isoformat(),
         "routine_name": s.routine.name if s.routine else "",
         "workouts": [{"id": w.id, "exercise": w.exercise, "exercise_id": w.exercise_id,
+                      "name_it": _resolve_exercise_name(w.exercise, w.exercise_id),
                       "sets": w.sets, "reps": w.reps, "weight": w.weight, "position": w.position,
                       "superset_id": w.superset_id} for w in wl]
     })
