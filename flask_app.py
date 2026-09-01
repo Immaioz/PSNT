@@ -45,6 +45,7 @@ if IS_VERCEL:
         "pool_pre_ping": True,
         "pool_recycle": 300,
     }
+    app.config["PREFERRED_URL_SCHEME"] = "https"
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -589,9 +590,9 @@ def get_exercise_detail(exercise_id):
     result["instructions_it"] = (ex.get("instructions") or {}).get("it")
     result["steps_it"] = (ex.get("instruction_steps") or {}).get("it") or []
     if result.get("image"):
-        result["image"] = url_for("static", filename="exercises/" + result["image"])
+        result["image"] = url_for("static", filename="exercises/" + result["image"], _external=True)
     if result.get("gif_url"):
-        result["gif_url"] = url_for("static", filename="exercises/" + result["gif_url"])
+        result["gif_url"] = url_for("static", filename="exercises/" + result["gif_url"], _external=True)
     return jsonify(result)
 
 
