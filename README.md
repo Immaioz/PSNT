@@ -47,14 +47,28 @@ python scripts/generate-exercises-data.py
 
 ## 3. Asset (immagini + GIF)
 
-Copia immagini e GIF dalla vecchia webapp:
+Gli asset (immagini 8,5 MB + GIF 122,8 MB) **non** stanno nel build: sono su un
+branch GitHub separato **`assets`** di questo repo, servito gratis via CDN
+jsDelivr:
+
+```
+https://cdn.jsdelivr.net/gh/Immaioz/PSNT@assets/exercises/
+```
+
+È il default di `VITE_ASSET_BASE`: non serve configurare nulla. Per aggiornare gli
+asset, aggiungi/modifica i file su quel branch e ricarica la cache jsDelivr.
+
+**Sviluppo locale** (senza CDN): copia gli asset dalla vecchia webapp
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/copy-assets.ps1
 ```
 
-In alternativa puoi lasciare gli asset su un host remoto e impostare il campo
-**Base URL degli asset** nelle Impostazioni dell'app.
+e imposta **Base URL degli asset** = `exercises/` nelle Impostazioni (o
+`VITE_ASSET_BASE=exercises/`).
+
+In alternativa puoi hostare gli asset altrove e impostare il campo **Base URL
+degli asset** nelle Impostazioni dell'app (accetta URL assoluti).
 
 ## 4. Sviluppo e build
 
@@ -73,17 +87,16 @@ valore vince sul default del build):
 1. **Variabili d'ambiente al build** (comodo su Vercel): copia `.env.example` in
    `.env` e imposta:
    - `VITE_API_URL` = URL `/exec` di Apps Script
-   - `VITE_ASSET_BASE` = cartella asset (default `exercises/`)
+   - `VITE_ASSET_BASE` = base asset (di default il CDN jsDelivr, non serve)
 2. **Impostazioni in-app**: apri **Impostazioni** (icona ingranaggio) e incolla
    l'URL `/exec`, poi **Test connessione**. Salvato nel `localStorage`.
 
 ### Deploy su Vercel
 
 - Framework preset: **Vite** · Build: `npm run build` · Output: `dist`.
-- In *Settings → Environment Variables* aggiungi `VITE_API_URL` (e
-  `VITE_ASSET_BASE` se serve).
-- Per gli asset locali, esegui prima `scripts/copy-assets.ps1` così `public/exercises/`
-  finisce nel build.
+- In *Settings → Environment Variables* aggiungi `VITE_API_URL`.
+- Gli asset esercizi arrivano dal CDN jsDelivr (branch `assets`): nessun asset da
+  copiare nel build, il deploy resta leggero.
 
 ## 6. Sicurezza (sito pubblico)
 

@@ -10,10 +10,12 @@ const TOKEN_KEY = 'psnt.apiToken'
 const ASSET_KEY = 'psnt.assetBase'
 const THEME_KEY = 'psnt.theme'
 
+const DEFAULT_ASSET_BASE = 'https://cdn.jsdelivr.net/gh/Immaioz/PSNT@assets/exercises/'
+
 const DEFAULTS: AppConfig = {
   apiUrl: (import.meta.env.VITE_API_URL || '').trim(),
   apiToken: (import.meta.env.VITE_API_TOKEN || '').trim(),
-  assetBase: import.meta.env.VITE_ASSET_BASE || 'exercises/',
+  assetBase: import.meta.env.VITE_ASSET_BASE || DEFAULT_ASSET_BASE,
   theme: 'dark'
 }
 
