@@ -4,6 +4,12 @@ import { call } from '../api'
 import { toast, escapeHtml } from '../dom'
 import type { Route } from '../router'
 
+function randomToken(len = 32): string {
+  const bytes = new Uint8Array(len)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export function renderSettings(root: HTMLElement, _route: Route): void {
   const cfg = config()
   root.innerHTML = `
@@ -20,6 +26,15 @@ export function renderSettings(root: HTMLElement, _route: Route): void {
         <input class="field__input" name="apiUrl" type="url" value="${escapeHtml(cfg.apiUrl)}"
           placeholder="https://script.google.com/macros/s/XXXX/exec" />
         <span class="field__hint">L'URL dell'app web pubblicata da Apps Script (termina con /exec).</span>
+      </label>
+      <label class="field">
+        <span class="field__label">Token API (condiviso)</span>
+        <div class="token-row">
+          <input class="field__input" name="apiToken" type="password" value="${escapeHtml(cfg.apiToken)}"
+            placeholder="incolla il token di Code.gs" autocomplete="off" />
+          <button type="button" class="btn btn--ghost" data-action="gen-token">Genera</button>
+        </div>
+        <span class="field__hint">Deve combaciare con <code>API_TOKEN</code> in Code.gs. Salvato solo in questo browser.</span>
       </label>
       <label class="field">
         <span class="field__label">Base URL degli asset esercizi</span>
@@ -43,15 +58,35 @@ export function renderSettings(root: HTMLElement, _route: Route): void {
 
   const form = root.querySelector('form') as HTMLFormElement
   const status = root.querySelector('[data-status]') as HTMLElement
+  const tokenInput = form.elements.namedItem('apiToken') as HTMLInputElement
+
+  function readApiUrl(): string {
+    return (form.elements.namedItem('apiUrl') as HTMLInputElement).value
+  }
+  function readAssetBase(): string {
+    return (form.elements.namedItem('assetBase') as HTMLInputElement).value
+  }
+
+  form.querySelector('[data-action="gen-token"]')?.addEventListener('click', async () => {
+    const token = randomToken()
+    tokenInput.value = token
+    tokenInput.type = 'text'
+    try {
+      await navigator.clipboard.writeText(token)
+      toast('Token generato e copiato: incollalo in API_TOKEN di Code.gs')
+    } catch {
+      toast('Token generato: copialo e incollalo in API_TOKEN di Code.gs')
+    }
+  })
 
   form.querySelector('[data-action="test"]')?.addEventListener('click', async () => {
     status.textContent = 'Verifica in corso...'
     status.className = 'settings-form__status'
-    const saved = config()
     setConfig({
-      apiUrl: (form.elements.namedItem('apiUrl') as HTMLInputElement).value,
-      assetBase: (form.elements.namedItem('assetBase') as HTMLInputElement).value,
-      theme: saved.theme
+      apiUrl: readApiUrl(),
+      apiToken: tokenInput.value,
+      assetBase: readAssetBase(),
+      theme: config().theme
     })
     try {
       await call('ping')
@@ -67,10 +102,13 @@ export function renderSettings(root: HTMLElement, _route: Route): void {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault()
-    const apiUrl = (form.elements.namedItem('apiUrl') as HTMLInputElement).value
-    const assetBase = (form.elements.namedItem('assetBase') as HTMLInputElement).value
     const theme = (form.elements.namedItem('theme') as HTMLSelectElement).value as 'light' | 'dark'
-    setConfig({ apiUrl, assetBase, theme })
+    setConfig({
+      apiUrl: readApiUrl(),
+      apiToken: tokenInput.value,
+      assetBase: readAssetBase(),
+      theme
+    })
     applyTheme(theme)
     toast('Impostazioni salvate')
   })

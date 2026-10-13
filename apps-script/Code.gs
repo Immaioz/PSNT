@@ -21,6 +21,12 @@
 
 var SPREADSHEET_ID = '';
 
+// Token condiviso: se impostato (non vuoto), ogni richiesta deve includere
+// il campo "token" con lo stesso valore, altrimenti viene rifiutata.
+// Genera una stringa lunga e casuale e incollala anche nelle Impostazioni
+// dell'app (NON nel codice del sito pubblico).
+var API_TOKEN = '';
+
 var SCHEMAS = {
   Routines: ['id', 'name', 'position', 'created_at'],
   RoutineExercises: [
@@ -53,6 +59,9 @@ function doPost(e) {
 
 function handle_(req) {
   try {
+    if (API_TOKEN && String(req.token || '') !== API_TOKEN) {
+      throw new Error('Non autorizzato');
+    }
     ensureSheets_();
     var action = req.action;
     var out;

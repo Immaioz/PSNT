@@ -1,15 +1,18 @@
 export interface AppConfig {
   apiUrl: string
+  apiToken: string
   assetBase: string
   theme: 'light' | 'dark'
 }
 
 const API_KEY = 'psnt.apiUrl'
+const TOKEN_KEY = 'psnt.apiToken'
 const ASSET_KEY = 'psnt.assetBase'
 const THEME_KEY = 'psnt.theme'
 
 const DEFAULTS: AppConfig = {
   apiUrl: (import.meta.env.VITE_API_URL || '').trim(),
+  apiToken: (import.meta.env.VITE_API_TOKEN || '').trim(),
   assetBase: import.meta.env.VITE_ASSET_BASE || 'exercises/',
   theme: 'dark'
 }
@@ -34,6 +37,7 @@ export function loadConfig(): AppConfig {
   const theme = read(THEME_KEY)
   return {
     apiUrl: read(API_KEY) ?? DEFAULTS.apiUrl,
+    apiToken: read(TOKEN_KEY) ?? DEFAULTS.apiToken,
     assetBase: read(ASSET_KEY) ?? DEFAULTS.assetBase,
     theme: theme === 'light' || theme === 'dark' ? theme : DEFAULTS.theme
   }
@@ -41,6 +45,7 @@ export function loadConfig(): AppConfig {
 
 export function saveConfig(cfg: Partial<AppConfig>): void {
   if (cfg.apiUrl !== undefined) write(API_KEY, cfg.apiUrl.trim())
+  if (cfg.apiToken !== undefined) write(TOKEN_KEY, cfg.apiToken.trim())
   if (cfg.assetBase !== undefined) write(ASSET_KEY, normalizeBase(cfg.assetBase))
   if (cfg.theme !== undefined) write(THEME_KEY, cfg.theme)
 }

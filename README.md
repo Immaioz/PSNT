@@ -85,6 +85,21 @@ valore vince sul default del build):
 - Per gli asset locali, esegui prima `scripts/copy-assets.ps1` così `public/exercises/`
   finisce nel build.
 
+## 6. Sicurezza (sito pubblico)
+
+Il deploy Apps Script gira "come te" e non ha login: chiunque abbia l'URL `/exec`
+può leggere/scrivere. Per proteggere i dati usa un **token condiviso**:
+
+1. In `Code.gs` imposta `var API_TOKEN = '<stringa-lunga-casuale>';` e ripubblica
+   (Gestisci distribuzioni → Nuova versione).
+2. Nell'app → **Impostazioni** → campo **Token API**: incolla lo stesso valore
+   (o premi **Genera** e copialo in `Code.gs`). → *Test connessione*.
+
+Il token viene salvato **solo nel `localStorage`** del browser (non nel bundle
+pubblico). ⚠️ Non mettere il token in `VITE_API_TOKEN`: le variabili `VITE_*`
+finiscono in chiaro nel JS servito dal sito.
+
+
 
 ## Note
 

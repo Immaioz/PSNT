@@ -15,7 +15,8 @@ export async function call<T = unknown>(
     throw new Error('URL API non configurato. Vai su Impostazioni.')
   }
 
-  const body = JSON.stringify({ action, ...payload })
+  const cfg = config()
+  const body = JSON.stringify({ action, token: cfg.apiToken, ...payload })
 
   let res: Response
   try {

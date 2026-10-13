@@ -1053,6 +1053,17 @@ a.workout__name {
   max-width: 620px;
 }
 
+.token-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.token-row .field__input {
+  flex: 1;
+  min-width: 0;
+}
+
 .settings-form__actions {
   display: flex;
   gap: 10px;
