@@ -1,15 +1,16 @@
 import { config } from './config'
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   ok: boolean
   data?: T
   error?: string
+  db?: unknown
 }
 
-export async function call<T = unknown>(
+export async function callRaw<T = unknown>(
   action: string,
   payload: Record<string, unknown> = {}
-): Promise<T> {
+): Promise<ApiResponse<T>> {
   const url = config().apiUrl.trim()
   if (!url) {
     throw new Error('URL API non configurato. Vai su Impostazioni.')
@@ -42,5 +43,13 @@ export async function call<T = unknown>(
   }
 
   if (!json.ok) throw new Error(json.error || 'Errore sconosciuto')
+  return json
+}
+
+export async function call<T = unknown>(
+  action: string,
+  payload: Record<string, unknown> = {}
+): Promise<T> {
+  const json = await callRaw<T>(action, payload)
   return json.data as T
 }

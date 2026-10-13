@@ -65,9 +65,10 @@ function handle_(req) {
     ensureSheets_();
     var action = req.action;
     var out;
+    var includeDb = true;
     switch (action) {
-      case 'ping': out = { pong: true, time: nowIso_() }; break;
-      case 'getAll': out = getAll_(); break;
+      case 'ping': out = { pong: true, time: nowIso_() }; includeDb = false; break;
+      case 'getAll': out = getAll_(); includeDb = false; break;
 
       case 'createRoutine': out = createRoutine_(req); break;
       case 'renameRoutine': out = renameRoutine_(req); break;
@@ -90,7 +91,9 @@ function handle_(req) {
 
       default: throw new Error('Azione sconosciuta: ' + action);
     }
-    return json_({ ok: true, data: out === undefined ? null : out });
+    var res = { ok: true, data: out === undefined ? null : out };
+    if (includeDb) res.db = getAll_();
+    return json_(res);
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
   }

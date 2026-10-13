@@ -1,4 +1,4 @@
-import { call } from './api'
+import { call, callRaw } from './api'
 import type { DbData, Exercise, Routine, RoutineExercise, Session, Workout } from './types'
 
 type Listener = () => void
@@ -195,25 +195,97 @@ export async function reload(): Promise<void> {
   }
 }
 
-async function mutate<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
-  const result = await call<T>(action, payload)
-  await reload()
-  return result
+/* ------------------------------ mutation engine ------------------------ */
+
+let queue: Promise<unknown> = Promise.resolve()
+
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn)
+  queue = run.catch(() => {})
+  return run
+}
+
+function cloneDb(): DbData {
+  return {
+    routines: state.db.routines.map((x) => ({ ...x })),
+    routineExercises: state.db.routineExercises.map((x) => ({ ...x })),
+    sessions: state.db.sessions.map((x) => ({ ...x })),
+    workouts: state.db.workouts.map((x) => ({ ...x }))
+  }
+}
+
+let tmpCounter = 0
+function tmpId(): number {
+  tmpCounter += 1
+  return -Date.now() - tmpCounter
+}
+
+function nextPosition(items: { position: number | null }[]): number {
+  let max = 0
+  for (const it of items) max = Math.max(max, Number(it.position) || 0)
+  return max + 1
+}
+
+type Optimistic<T> = (db: DbData) => T
+
+async function mutate<T>(
+  action: string,
+  payload: Record<string, unknown> = {},
+  optimistic?: Optimistic<T>
+): Promise<T> {
+  let optimisticResult: T | undefined
+  const before = state.db
+  if (optimistic) {
+    const db = cloneDb()
+    optimisticResult = optimistic(db)
+    state.db = db
+    notify()
+  }
+  try {
+    const env = await enqueue(() => callRaw<T>(action, payload))
+    if (env.db) state.db = normalizeDb(env.db as Partial<DbData>)
+    if (state.error) state.error = ''
+    notify()
+    return (env.data as T) ?? (optimisticResult as T)
+  } catch (err) {
+    state.db = before
+    state.error = (err as Error).message
+    notify()
+    throw err
+  }
 }
 
 /* ------------------------------ mutations ------------------------------ */
 
 export function createRoutine(name: string): Promise<Routine> {
-  return mutate<Routine>('createRoutine', { name })
+  return mutate<Routine>('createRoutine', { name }, (db) => {
+    const routine: Routine = { id: tmpId(), name, position: nextPosition(db.routines), created_at: null }
+    db.routines.push(routine)
+    return routine
+  })
 }
 export function renameRoutine(id: number, name: string): Promise<unknown> {
-  return mutate('renameRoutine', { id, name })
+  return mutate('renameRoutine', { id, name }, (db) => {
+    const r = db.routines.find((x) => Number(x.id) === Number(id))
+    if (r) r.name = name
+  })
 }
 export function deleteRoutine(id: number): Promise<unknown> {
-  return mutate('deleteRoutine', { id })
+  return mutate('deleteRoutine', { id }, (db) => {
+    db.routines = db.routines.filter((x) => Number(x.id) !== Number(id))
+    db.routineExercises = db.routineExercises.filter((x) => Number(x.routine_id) !== Number(id))
+    const sIds = db.sessions.filter((x) => Number(x.routine_id) === Number(id)).map((x) => Number(x.id))
+    db.sessions = db.sessions.filter((x) => Number(x.routine_id) !== Number(id))
+    db.workouts = db.workouts.filter((x) => !sIds.includes(Number(x.session_id)))
+  })
 }
 export function reorderRoutines(order: number[]): Promise<unknown> {
-  return mutate('reorderRoutines', { order })
+  return mutate('reorderRoutines', { order }, (db) => {
+    order.forEach((rid, i) => {
+      const r = db.routines.find((x) => Number(x.id) === Number(rid))
+      if (r) r.position = i
+    })
+  })
 }
 
 export function addRoutineExercise(payload: {
@@ -224,7 +296,21 @@ export function addRoutineExercise(payload: {
   default_reps: number | null
   notes: string | null
 }): Promise<RoutineExercise> {
-  return mutate<RoutineExercise>('addRoutineExercise', payload)
+  return mutate<RoutineExercise>('addRoutineExercise', payload, (db) => {
+    const re: RoutineExercise = {
+      id: tmpId(),
+      routine_id: payload.routine_id,
+      exercise: payload.exercise,
+      exercise_id: payload.exercise_id ?? null,
+      default_sets: payload.default_sets ?? null,
+      default_reps: payload.default_reps ?? null,
+      notes: payload.notes ?? null,
+      position: nextPosition(db.routineExercises.filter((x) => Number(x.routine_id) === Number(payload.routine_id))),
+      superset_id: null
+    }
+    db.routineExercises.push(re)
+    return re
+  })
 }
 export function editRoutineExercise(payload: {
   id: number
@@ -234,19 +320,44 @@ export function editRoutineExercise(payload: {
   default_reps?: number | null
   notes?: string | null
 }): Promise<unknown> {
-  return mutate('editRoutineExercise', payload)
+  return mutate('editRoutineExercise', payload, (db) => {
+    const re = db.routineExercises.find((x) => Number(x.id) === Number(payload.id))
+    if (!re) return
+    if (payload.exercise !== undefined) re.exercise = payload.exercise
+    if (payload.exercise_id !== undefined) re.exercise_id = payload.exercise_id ?? null
+    if (payload.default_sets !== undefined) re.default_sets = payload.default_sets ?? null
+    if (payload.default_reps !== undefined) re.default_reps = payload.default_reps ?? null
+    if (payload.notes !== undefined) re.notes = payload.notes ?? null
+  })
 }
 export function deleteRoutineExercise(id: number): Promise<unknown> {
-  return mutate('deleteRoutineExercise', { id })
+  return mutate('deleteRoutineExercise', { id }, (db) => {
+    db.routineExercises = db.routineExercises.filter((x) => Number(x.id) !== Number(id))
+  })
 }
 export function reorderRoutineExercises(items: { id: number; position: number }[]): Promise<unknown> {
-  return mutate('reorderRoutineExercises', { items })
+  return mutate('reorderRoutineExercises', { items }, (db) => {
+    items.forEach(({ id, position }) => {
+      const re = db.routineExercises.find((x) => Number(x.id) === Number(id))
+      if (re) re.position = position
+    })
+  })
 }
 export function setSuperset(id1: number, id2: number): Promise<{ group_id: string }> {
-  return mutate<{ group_id: string }>('setSuperset', { id1, id2 })
+  return mutate<{ group_id: string }>('setSuperset', { id1, id2 }, (db) => {
+    const g = 'tmp-' + Math.abs(tmpId())
+    db.routineExercises.forEach((x) => {
+      if (Number(x.id) === Number(id1) || Number(x.id) === Number(id2)) x.superset_id = g
+    })
+    return { group_id: g }
+  })
 }
 export function unsetSuperset(supersetId: string): Promise<unknown> {
-  return mutate('unsetSuperset', { superset_id: supersetId })
+  return mutate('unsetSuperset', { superset_id: supersetId }, (db) => {
+    db.routineExercises.forEach((x) => {
+      if (x.superset_id === supersetId) x.superset_id = null
+    })
+  })
 }
 
 export function startSession(routineId: number): Promise<{ session_id: number }> {
@@ -256,7 +367,16 @@ export function saveSession(
   sessionId: number,
   workouts: { id: number; sets: number | null; reps: number | null; weight: number | null }[]
 ): Promise<unknown> {
-  return mutate('saveSession', { session_id: sessionId, workouts })
+  return mutate('saveSession', { session_id: sessionId, workouts }, (db) => {
+    workouts.forEach((w) => {
+      const x = db.workouts.find((y) => Number(y.id) === Number(w.id))
+      if (x) {
+        x.sets = w.sets
+        x.reps = w.reps
+        x.weight = w.weight
+      }
+    })
+  })
 }
 export function updateSupersetGroup(
   sessionId: number,
@@ -264,14 +384,29 @@ export function updateSupersetGroup(
   sets: number | null,
   reps: number | null
 ): Promise<unknown> {
-  return mutate('updateSupersetGroup', { session_id: sessionId, superset_id: supersetId, sets, reps })
+  return mutate('updateSupersetGroup', { session_id: sessionId, superset_id: supersetId, sets, reps }, (db) => {
+    db.workouts.forEach((w) => {
+      if (Number(w.session_id) === Number(sessionId) && w.superset_id === supersetId) {
+        w.sets = sets
+        w.reps = reps
+      }
+    })
+  })
 }
 export function deleteSessionWorkout(workoutId: number): Promise<unknown> {
-  return mutate('deleteSessionWorkout', { workout_id: workoutId })
+  return mutate('deleteSessionWorkout', { workout_id: workoutId }, (db) => {
+    db.workouts = db.workouts.filter((x) => Number(x.id) !== Number(workoutId))
+  })
 }
 export function deleteSession(sessionId: number): Promise<unknown> {
-  return mutate('deleteSession', { session_id: sessionId })
+  return mutate('deleteSession', { session_id: sessionId }, (db) => {
+    db.sessions = db.sessions.filter((x) => Number(x.id) !== Number(sessionId))
+    db.workouts = db.workouts.filter((x) => Number(x.session_id) !== Number(sessionId))
+  })
 }
 export function clearStats(): Promise<unknown> {
-  return mutate('clearStats')
+  return mutate('clearStats', {}, (db) => {
+    db.sessions = []
+    db.workouts = []
+  })
 }
