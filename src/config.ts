@@ -7,7 +7,7 @@ export interface AppConfig {
 
 const API_KEY = 'psnt.apiUrl'
 const TOKEN_KEY = 'psnt.apiToken'
-const ASSET_KEY = 'psnt.assetBase'
+const ASSET_KEY = 'psnt.assetBase.v2'
 const THEME_KEY = 'psnt.theme'
 
 const DEFAULT_ASSET_BASE = 'https://cdn.jsdelivr.net/gh/Immaioz/PSNT@assets/exercises/'
